@@ -69,7 +69,7 @@ namespace AtlasHelper
         private IList<WorldArea> bonusComp;
         
 
-        private List<(AtlasMap, RectangleF)> finalMapsToRun = new List<(AtlasMap, RectangleF)>();
+        private List<(AtlasMap,int, RectangleF)> finalMapsToRun = new List<(AtlasMap,int,RectangleF)>();
 
         public override bool Initialise()
         {
@@ -221,7 +221,7 @@ namespace AtlasHelper
             var augmentImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "augment.png"), false);
             var alcImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "alc.png"), false);            
             linesIgnoreMaps = File.ReadAllLines(Path.Combine(DirectoryFullName, "images", "ignoreMaps.txt")).ToList();
-
+            GetAtlasNodes();
             if (!initImage)
                 return false;
 
@@ -309,8 +309,8 @@ namespace AtlasHelper
 
                 
 
-                var mapsThatGiveCompletion = new List<(AtlasMap, RectangleF)>();
-                var mapsThatWontGiveCompletion = new List<(AtlasMap, RectangleF)>();
+                var mapsThatGiveCompletion = new List<(AtlasMap,int, RectangleF)>();
+                var mapsThatWontGiveCompletion = new List<(AtlasMap,int, RectangleF)>();
 
                 
 
@@ -350,6 +350,7 @@ namespace AtlasHelper
 
                     var area = mapComponent.Area;
                     var tier = mapComponent.Tier;
+                    LogMessage(" o que se passa " + ListAtlasMaps.Count(), 5, Color.Yellow);
                     var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
 
                     //if (comp.Contains(area))
@@ -363,11 +364,11 @@ namespace AtlasHelper
 
                     if (mapCanGiveCompletion(item))
                     {
-                        mapsThatGiveCompletion.Add((ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name), drawRect));
+                        mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() >0).FirstOrDefault(x => x.WorldArea.Name == area.Name),tier, drawRect));
                     }
                     else
                     {
-                        mapsThatWontGiveCompletion.Add((ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name), drawRect));
+                        mapsThatWontGiveCompletion.Add((ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
                     }
                     /*
                     if (bonusComp.Contains(area))
@@ -396,18 +397,18 @@ namespace AtlasHelper
                 {
                     foreach (var aux in mapsThatWontGiveCompletion)
                     {
-                        LogMessage("Wont give completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item1.BaseTier, 5, Color.Red);
+                        LogMessage("Wont give completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Color.Red);
                     }
 
                     foreach (var aux in mapsThatGiveCompletion)
                     {
-                        LogMessage("WILL GIVE completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item1.BaseTier, 5, Color.Red);
+                        LogMessage("WILL GIVE completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Color.Red);
                     }
                 }
 
                 
-                var mapsToRunCompletion = mapsThatGiveCompletion.Where(x => x.Item1.BaseTier <= highestCompletedTier - 2).OrderByDescending(x => x.Item1.BaseTier);
-                var mapsToRunNoCompletion = mapsThatWontGiveCompletion.Where(x => x.Item1.BaseTier <= highestCompletedTier - 2).OrderByDescending(x => x.Item1.BaseTier);
+                var mapsToRunCompletion = mapsThatGiveCompletion.Where(x => x.Item2 <= highestCompletedTier - 2).OrderByDescending(x => x.Item2);
+                var mapsToRunNoCompletion = mapsThatWontGiveCompletion.Where(x => x.Item2 <= highestCompletedTier - 2).OrderByDescending(x => x.Item2);
           
 
                 if (highestCompletedTier >= 3)
@@ -419,21 +420,21 @@ namespace AtlasHelper
                         // first criteria, highest tier of map, so filter everythign by the highest tier inside that list
                         // second criteria, do the map that has the highest sum of uncompleted map tiers
 
-                        int highestBaseTier = mapsToRunCompletion.Max(map => map.Item1.BaseTier);
-                        var highestBaseTierMaps = mapsToRunCompletion.Where(map => map.Item1.BaseTier == highestBaseTier).ToList();
+                        int highestTier = mapsToRunCompletion.Max(map => map.Item2);
+                        var highestTierMaps = mapsToRunCompletion.Where(map => map.Item2 == highestTier).ToList();
 
-                        int maxSum = highestBaseTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
-                        finalMapsToRun = highestBaseTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
+                        finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
 
                     }
                     else if (mapsThatGiveCompletion.Count() > 0)  // second best scenario, we have uncompleted maps 
                     {
 
-                        int highestBaseTier = mapsThatGiveCompletion.Max(map => map.Item1.BaseTier);
-                        var highestBaseTierMaps = mapsThatGiveCompletion.Where(map => map.Item1.BaseTier == highestBaseTier).ToList();
+                        int highestTier = mapsThatGiveCompletion.Max(map => map.Item2);
+                        var highestTierMaps = mapsThatGiveCompletion.Where(map => map.Item2 == highestTier).ToList();
 
-                        int maxSum = highestBaseTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
-                        finalMapsToRun = highestBaseTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
+                        finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
 
                     } // perhaps if you have no maps that give completion, you should always run the highest so skip the third scenario
 
@@ -450,11 +451,11 @@ namespace AtlasHelper
                     else if (mapsThatWontGiveCompletion.Count() > 0) // fourth best scenario, we have completed maps run the highest that have the most uncompleted maps adjacent
                     {
 
-                        int highestBaseTier = mapsThatWontGiveCompletion.Max(map => map.Item1.BaseTier);
-                        var highestBaseTierMaps = mapsThatWontGiveCompletion.Where(map => map.Item1.BaseTier == highestBaseTier).ToList();
+                        int highestTier = mapsThatWontGiveCompletion.Max(map => map.Item2);
+                        var highestTierMaps = mapsThatWontGiveCompletion.Where(map => map.Item2 == highestTier).ToList();
 
-                        int maxSum = highestBaseTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
-                        finalMapsToRun = highestBaseTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
+                        finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
                     }
                 }
                 else
@@ -504,6 +505,7 @@ namespace AtlasHelper
             var area = mapComponent.Area;
             var tier = mapComponent.Tier;
             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
+            var neighbours = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).AdjacentMaps.Count();
 
             if (bonusComp.Contains(area))
             {
@@ -512,6 +514,16 @@ namespace AtlasHelper
                     LogMessage("Map " + area + " wont give completion because it is already present on the completed areas", 5, Color.Red);
                 }
                 
+                return false;
+
+            }
+            if (neighbours<1)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " wont give completion because it cant", 5, Color.Red);
+                }
+
                 return false;
 
             }
@@ -634,8 +646,12 @@ namespace AtlasHelper
                 }
 
                 bool isCompleted = bonusComp.Contains(node.Area);
-                
-                ListAtlasMaps.Add(new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted));
+                //if (numberOfNeighbours > 0)
+                //{
+                    ListAtlasMaps.Add(new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted));
+                    //LogMessage(" a adicionar " + new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted), 5, Color.Green);
+                //}
+                    
 
 
 
@@ -941,11 +957,11 @@ namespace AtlasHelper
                     if(Settings.Debug)
                         LogMessage("Best maps to run " + mapToRun.Item1.ToStringBestMapsToRun(), 5, Color.Green);
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
-                    if (disableOnHover && disableOnHoverRect.Intersects(mapToRun.Item2))
+                    if (disableOnHover && disableOnHoverRect.Intersects(mapToRun.Item3))
                         continue;
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
                     if (Settings.EnableDiagonalProgressionHighlight)
-                        Graphics.DrawBox(mapToRun.Item2, Settings.DiagonalProgressionHighlight);
+                        Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlight);
                     //Graphics.DrawImage("Image
 
                 }
