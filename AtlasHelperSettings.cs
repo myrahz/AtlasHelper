@@ -35,7 +35,6 @@ namespace AtlasHelper
         public ToggleNode ShowMapTierTopLeft { get; set; } = new ToggleNode();
         public ToggleNode ShowIfMapIsReadyOrNeedsCurrency { get; set; } = new ToggleNode();
         public ToggleNode DrawKiracMapsNaturalTier { get; set; } = new ToggleNode();
-        [Menu("Colors")]
         public ColorNode UncompletedMaps { get; set; } = new ColorNode(Color.LightGreen);
         public ColorNode IgnoredMaps { get; set; } = new ColorNode(Color.Red);
         public ColorNode MapReady { get; set; } = new ColorNode(Color.LightGreen);
