@@ -27,36 +27,7 @@ namespace AtlasHelper
 {
     public class AtlasHelper : BaseSettingsPlugin<AtlasHelperSettings>
     {
-        //private readonly Dictionary<int, float> ArenaEffectiveLevels = new Dictionary<int, float>
-        //{
-        //    {71, 70.94f},
-        //    {72, 71.82f},
-        //    {73, 72.64f},
-        //    {74, 73.4f},
-        //    {75, 74.1f},
-        //    {76, 74.74f},
-        //    {77, 75.32f},
-        //    {78, 75.84f},
-        //    {79, 76.3f},
-        //    {80, 76.7f},
-        //    {81, 77.04f},
-        //    {82, 77.32f},
-        //    {83, 77.54f},
-        //    {84, 77.7f},
-        //    {85, 77.85f},
-        //    {86, 77.99f}
-        //};
-
-        //public List<string> ShaperMaps = new List<string> { "MapWorldsHydra", "MapWorldsPhoenix", "MapWorldsMinotaur", "MapWorldsChimera" };
-
-        //private readonly Color[] _atlasInventLayerColors = new[]
-        //{
-        //    Color.Gray,
-        //    Color.White,
-        //    Color.Yellow,
-        //    Color.OrangeRed,
-        //    Color.Red,
-        //};
+        
 
         private List<String> linesIgnoreMaps = new List<String>();
         private Color[] SelectColors;
@@ -255,36 +226,7 @@ namespace AtlasHelper
             DrawPlayerInvMaps();
             DrawNpcInvMaps();
             DrawDiagonalProgression();
-            //DrawAtlasMaps();
-
-            //var stash = GameController.IngameState.IngameUi.StashElement;
-
-            //if (stash.IsVisible)
-            //{
-            //    var visibleStash = stash.VisibleStash;
-
-            //    if (visibleStash != null)
-            //    {
-            //        var items = visibleStash.VisibleInventoryItems;
-
-            //        if (items != null)
-            //        {
-            //            HiglightExchangeMaps();
-            //            HiglightAllMaps(items);
-
-            //            if (CurrentStashAddr != visibleStash.Address)
-            //            {
-            //                CurrentStashAddr = visibleStash.Address;
-            //                var updateMapsCount = Settings.MapTabNode.Value == stash.IndexVisibleStash;
-            //               //UpdateData(items, updateMapsCount);
-            //            }
-            //        }
-            //        else
-            //            CurrentStashAddr = -1;
-            //    }
-            //}
-            //else
-            //    CurrentStashAddr = -1;
+            
         }
 
         private void DrawDiagonalProgression()
@@ -350,7 +292,7 @@ namespace AtlasHelper
 
                     var area = mapComponent.Area;
                     var tier = mapComponent.Tier;
-                    LogMessage(" o que se passa " + ListAtlasMaps.Count(), 5, Color.Yellow);
+                    
                     var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
 
                     //if (comp.Contains(area))
@@ -370,24 +312,7 @@ namespace AtlasHelper
                     {
                         mapsThatWontGiveCompletion.Add((ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
                     }
-                    /*
-                    if (bonusComp.Contains(area))
-                    {
-                        mapsThatWontGiveCompletion.Add(ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name));
-
-                    }
-                    else if (rarity < ItemRarity.Rare && corrupted && naturalTier > 5)
-                    {
-                        mapsThatWontGiveCompletion.Add(ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name));
-                    }
-                    else if (rarity < ItemRarity.Magic && corrupted)
-                    {
-                        mapsThatWontGiveCompletion.Add(ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name));
-                    }
-                    else
-                    {
-                        mapsThatGiveCompletion.Add(ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name));
-                    }*/
+                    
 
                 }
 
@@ -436,18 +361,7 @@ namespace AtlasHelper
                         int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
 
-                    } // perhaps if you have no maps that give completion, you should always run the highest so skip the third scenario
-
-                    /*
-                    else if (mapsToRunNoCompletion.Count() > 0)  // third best scenario, we have completed maps 2 tiers below max (is this even good or should it just skip to the next)
-                    {
-                        int highestBaseTier = mapsToRunNoCompletion.Max(map => map.BaseTier);
-                        var highestBaseTierMaps = mapsToRunNoCompletion.Where(map => map.BaseTier == highestBaseTier).ToList();
-
-                        int maxSum = highestBaseTierMaps.Max(map => map.SumOfBaseTiersOfUncompletedAdjacentMaps());
-                        finalMapsToRun = highestBaseTierMaps.Where(map => map.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
-                    }
-                    */
+                    } 
                     else if (mapsThatWontGiveCompletion.Count() > 0) // fourth best scenario, we have completed maps run the highest that have the most uncompleted maps adjacent
                     {
 
@@ -623,10 +537,14 @@ namespace AtlasHelper
             {
 
                 var baseAtlasNodeAddress = node.Address;
-                var tier0 = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x51);
+                //var tier0 = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x51);
+                var tier0 = node.TierProgression[0];
+                
 
                 var AtlasNodeKeys = ingameState.M.Read<DatArrayStruct>(baseAtlasNodeAddress + 0x41);
-                var numberOfNeighbours = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x41);
+               
+                //var numberOfNeighbours = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x41);
+                var numberOfNeighbours = node.Connections.Count();
                 var isNormalMap = numberOfNeighbours > 1;
 
                 //LogMessage("gg " + node.Area.Name + " neighbours " + tier0 + " is normal " + isNormalMap, 5, Color.Yellow);
@@ -764,24 +682,17 @@ namespace AtlasHelper
 
                             var mapComponent = item.Item.GetComponent<Map>();
                             var mapGridX = item.PosX;
-                            //var mapGridY = item.PosY;
-                            //var mapCenterX = baseX + (baseWidth / 2) + (mapGridX * baseWidth);
-                            //var mapCenterY = baseY + (baseHeight / 2) + (mapGridY * baseHeight);
+         
                             if (mapComponent == null)
                                 continue;
 
                             var drawRect = item.GetClientRect();
                             var mapArea = mapComponent.Area;
                             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
-                            //var shaper = shapered.Contains(mapArea);
 
-                            //-----------
 
                             var mapRarity = item.Item.GetComponent<Mods>().ItemRarity;
 
-                            //var shaper = shapered.Contains(mapArea);
-
-                            //check item quality, if unique mapcontains name9
 
                             if (MapAreasInBag.Contains(mapArea.Name))
                             {
@@ -1023,10 +934,7 @@ namespace AtlasHelper
 
                 }
 
-                //MapWorldsMinotaur
-                //MapWorldsHydra
-                //MapWorldsPhoenix
-                //MapWorldsChimera
+
 
                 if (completed == 0)
                 {
