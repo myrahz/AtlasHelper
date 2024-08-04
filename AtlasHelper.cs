@@ -35,6 +35,7 @@ namespace AtlasHelper
         private List<(WorldArea, int, bool)> BonusAreasBaseTiers = new List<(WorldArea, int, bool)>();
 
         private List<AtlasMap> ListAtlasMaps = new List<AtlasMap>();
+        private List<AtlasMap> ListAtlasMapsCompleteable = new List<AtlasMap>();
         private int highestCompletedTier = 0;
 
         private IList<WorldArea> bonusComp;
@@ -221,10 +222,15 @@ namespace AtlasHelper
 
             // test highest completed tier
             if (Settings.Debug)
-                LogMessage($"Highest completed tier: {highestCompletedTier}", 5, Color.Green);
+            {
+                LogMessage($"Highest completed tier: {highestCompletedTier}", 5, Color.LightBlue);
+                LogMessage($"Number of atlas maps that award completion: {ListAtlasMaps.Count(atlasMap => atlasMap.AdjacentMaps.Count > 0)}", 5, Color.LightBlue);
+            }
+                
             checkMapIgnore();
             DrawPlayerInvMaps();
             DrawNpcInvMaps();
+            //DrawNpcInvMapsAlt();
             DrawDiagonalProgression();
             
         }
@@ -240,10 +246,10 @@ namespace AtlasHelper
 
                 var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
 
-                if (ingameState.IngameUi.StashElement.IsVisible)
+                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null   )
                 {
 
-                    foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems)
+                    foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems )
                     {
                         inventoryZone.Insert(inventoryZone.Count, normalStashItem);
                     }
@@ -291,6 +297,7 @@ namespace AtlasHelper
 
 
                     var area = mapComponent.Area;
+                    var uniqueName = modsComponent.UniqueName;
                     var tier = mapComponent.Tier;
                     
                     var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
@@ -306,11 +313,29 @@ namespace AtlasHelper
 
                     if (mapCanGiveCompletion(item))
                     {
-                        mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() >0).FirstOrDefault(x => x.WorldArea.Name == area.Name),tier, drawRect));
+                        if(rarity != ItemRarity.Unique)
+                        {
+                            mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
+                        }
+                        else
+                        {
+                            mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == uniqueName), tier, drawRect));
+                        }
+
+                        
+                        
                     }
                     else
                     {
-                        mapsThatWontGiveCompletion.Add((ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
+                        
+                        if (rarity != ItemRarity.Unique)
+                        {
+                            mapsThatWontGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
+                        }
+                        else
+                        {
+                            mapsThatWontGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == uniqueName), tier, drawRect));
+                        }
                     }
                     
 
@@ -322,12 +347,12 @@ namespace AtlasHelper
                 {
                     foreach (var aux in mapsThatWontGiveCompletion)
                     {
-                        LogMessage("Wont give completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Color.Red);
+                        LogMessage("Wont give completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Settings.IgnoredMaps);
                     }
 
                     foreach (var aux in mapsThatGiveCompletion)
                     {
-                        LogMessage("WILL GIVE completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Color.Red);
+                        LogMessage("WILL GIVE completion: " + aux.Item1.WorldArea.Name + " of tier : " + aux.Item2, 5, Settings.UncompletedMaps);
                     }
                 }
 
@@ -416,57 +441,85 @@ namespace AtlasHelper
             var baseComponent = entity.GetComponent<Base>();
             var rarity = modsComponent.ItemRarity;
             var corrupted = baseComponent.isCorrupted;
+            var uniqueName = modsComponent.UniqueName;
             var area = mapComponent.Area;
             var tier = mapComponent.Tier;
             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
             var neighbours = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).AdjacentMaps.Count();
 
-            if (bonusComp.Contains(area))
-            {
-                if (Settings.Debug)
-                {
-                    LogMessage("Map " + area + " wont give completion because it is already present on the completed areas", 5, Color.Red);
-                }
-                
-                return false;
+            if ((!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == uniqueName) && rarity == ItemRarity.Unique) || (!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == area.Name) && rarity < ItemRarity.Unique))
 
-            }
-            if (neighbours<1)
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " wont give completion because it cant", 5, Color.Red);
+                    LogMessage("Map " + uniqueName + "|" + area + " | " + rarity + " wont give completion because it isn't even present on the atlas", 5, Settings.IgnoredMaps);
                 }
 
                 return false;
 
             }
-            else if (rarity < ItemRarity.Rare && corrupted && naturalTier > 5 )
+            else if (bonusComp.Contains(area) && rarity != ItemRarity.Unique)
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " wont give completion because it is corrupted, it is not rare and its natural tier is bigger than 5", 5, Color.Red);
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already present on the completed areas", 5, Settings.IgnoredMaps);
+                }
+
+                return false;
+
+            }
+            else if (bonusComp.Any(x => x.Name == uniqueName) && rarity == ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Unique Map " + uniqueName + "|" + area + " rarity " + rarity + " wont give completion because it is already present on the completed areas", 5, Settings.IgnoredMaps);
+                }
+
+                return false;
+
+            }
+            else if (naturalTier > 5 && corrupted && rarity != ItemRarity.Rare)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already corrupted, it is not rare and its natural tier is bigger than 10", 5, Settings.IgnoredMaps);
                 }
                 return false;
             }
-            else if (rarity < ItemRarity.Magic && corrupted)
+            else if (corrupted && (rarity != ItemRarity.Rare && rarity != ItemRarity.Magic))
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " wont give completion because it is corrupted and it is not magic and its natural tier is below 5 ", 5, Color.Red);
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already corrupted, it is not rare/magic", 5, Settings.IgnoredMaps);
                 }
                 return false;
+            }
+            else if (!bonusComp.Any(x => x.Name == area.Name) && rarity < ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + uniqueName + "|" + area + " | " + rarity + " will give completion ", 5, Settings.UncompletedMaps);
+                }
+                return true;
+            }
+            else if (!bonusComp.Any(x => x.Name == uniqueName) && rarity == ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("UNIQUE Map " + uniqueName + " | " + area + " | " + rarity + " will give completion ", 5, Settings.UncompletedMaps);
+                }
+                return true;
             }
             else
             {
-               if (Settings.Debug)
-               {
-                LogMessage("Map " + area + " will give completion ", 5, Color.Green);
-               }
-                return true;
+                if (Settings.Debug)
+                {
+                    LogMessage("Couldnt capture " + uniqueName + "|" + area + " | " + rarity + "  ", 5, Color.Orange);
+                }
+                return false;
             }
 
-           
+
         }
 
         private bool npcInvMapCanGiveCompletion(ServerInventory.InventSlotItem npcInventSlotItem)
@@ -483,34 +536,88 @@ namespace AtlasHelper
             var rarity = modsComponent.ItemRarity;
             var corrupted = baseComponent.isCorrupted;
             var area = mapComponent.Area;
+            var uniqueName = modsComponent.UniqueName;
             var tier = mapComponent.Tier;
             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
 
-            if (bonusComp.Contains(area))
+            if ((!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == uniqueName) && rarity == ItemRarity.Unique) || (!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == area.Name) && rarity < ItemRarity.Unique))
+
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " rarity " + rarity + " wont give completion because it is already present on the completed areas", 5, Color.Red);
+                    LogMessage("Map " + uniqueName + "|" + area + " | " + rarity + " wont give completion because it isn't even present on the atlas", 5, Settings.IgnoredMaps);
                 }
 
                 return false;
 
             }
-            else if (naturalTier > 10 && (!corrupted || rarity<ItemRarity.Rare) && rarity!= ItemRarity.Unique )
+            else if (bonusComp.Contains(area) && rarity != ItemRarity.Unique)
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " rarity " + rarity + " wont give completion because it is not corrupted, it is not rare and its natural tier is bigger than 10", 5, Color.Red);
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already present on the completed areas", 5, Settings.IgnoredMaps);
+                }
+
+                return false;
+
+            }
+            else if (bonusComp.Any(x => x.Name == uniqueName) && rarity == ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Unique Map " + uniqueName + "|" + area + " rarity " + rarity + " wont give completion because it is already present on the completed areas", 5, Settings.IgnoredMaps);
+                }
+
+                return false;
+
+            }
+            else if (naturalTier > 5 && corrupted && rarity != ItemRarity.Rare)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already corrupted, it is not rare and its natural tier is bigger than 10", 5, Settings.IgnoredMaps);
                 }
                 return false;
+            }
+            else if (corrupted && (rarity != ItemRarity.Rare && rarity != ItemRarity.Magic))
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because it is already corrupted, it is not rare/magic", 5, Settings.IgnoredMaps);
+                }
+                return false;
+            }
+            else if (!corrupted && naturalTier > 10)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because its not corrupted and its natural tier is bigger than 10", 5, Settings.IgnoredMaps);
+                }
+                return false;
+            }
+            else if (!bonusComp.Any(x => x.Name == area.Name) && rarity < ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + uniqueName + "|" + area + " | " + rarity + " will give completion ", 5, Settings.UncompletedMaps);
+                }
+                return true;
+            }
+            else if (!bonusComp.Any(x => x.Name == uniqueName) && rarity == ItemRarity.Unique)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("UNIQUE Map " + uniqueName + " | " + area + " | " + rarity + " will give completion ", 5, Settings.UncompletedMaps);
+                }
+                return true;
             }
             else
             {
                 if (Settings.Debug)
                 {
-                    LogMessage("Map " + area + " will give completion ", 5, Color.Green);
+                    LogMessage("Couldnt capture " + uniqueName + "|" + area + " | " + rarity + "  ", 5, Color.Orange);
                 }
-                return true;
+                return false;
             }
 
 
@@ -547,7 +654,7 @@ namespace AtlasHelper
                 var numberOfNeighbours = node.Connections.Count();
                 var isNormalMap = numberOfNeighbours > 1;
 
-                //LogMessage("gg " + node.Area.Name + " neighbours " + tier0 + " is normal " + isNormalMap, 5, Color.Yellow);
+                
                 BonusAreasBaseTiers.Add((node.Area, tier0,isNormalMap));
                 var AtlasNodeKeysStruct = ReadDatPtr2(AtlasNodeKeys, ingameState.M);
 
@@ -567,14 +674,17 @@ namespace AtlasHelper
                 //if (numberOfNeighbours > 0)
                 //{
                     ListAtlasMaps.Add(new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted));
-                    //LogMessage(" a adicionar " + new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted), 5, Color.Green);
+                    
                 //}
                     
 
 
 
             }
-                       
+
+            ListAtlasMapsCompleteable = ListAtlasMaps.Where(atlasMap => atlasMap.AdjacentMaps.Count > 0).ToList();
+
+
 
             var filteredBonus = BonusAreasBaseTiers.Where(x => x.Item3 == true && bonusComp.Contains(x.Item1)).ToList(); // item 3 indicates if a map is normal, which means if it isnt a unique or a special map like Shaper or T17
             
@@ -613,7 +723,7 @@ namespace AtlasHelper
             if (ingameState.IngameUi.InventoryPanel.IsVisible)
             {
                 var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
-                if (ingameState.IngameUi.StashElement.IsVisible)
+                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null)
                 {
 
                     foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems)
@@ -660,6 +770,7 @@ namespace AtlasHelper
 
                         var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
                         
+                        //var inventory = KiracPanel.GetChildFromIndices(0, 3);
                         var inventory = KiracPanel.GetChildFromIndices(0, 3, 0, 0);
                         //LogMessage("Children indice 0 : " + KiracPanel.GetChildFromIndices(0).ChildCount.ToString());
                         //LogMessage("Children indice 0,3 : " + inventory.ChildCount.ToString());
@@ -838,6 +949,297 @@ namespace AtlasHelper
 
           
         }
+        /*
+          
+        
+        private void DrawKiracMissionsTest()
+        {
+            var ingameState = GameController.Game.IngameState;
+
+            var serverData = ingameState.ServerData;
+            var npcInv = serverData.NPCInventories;
+
+            if (npcInv == null || npcInv.Count == 0) return;
+
+            var bonusComp = serverData.BonusCompletedAreas;
+            var comp = serverData.CompletedAreas;
+            //var shapered = serverData.ShaperElderAreas;
+
+            var drawListPos = new Vector2(200, 200);
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
+            List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
+
+
+
+       
+
+                
+                //kirac mission++
+                    if (GameController.Game.IngameState.IngameUi.ZanaMissionChoice.IsVisible)
+                    {
+
+                        var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
+
+                        //var inventory = KiracPanel.GetChildFromIndices(0, 3);
+                        var inventory = KiracPanel.GetChildFromIndices(0, 3, 0, 0);
+                        //LogMessage("Children indice 0 : " + KiracPanel.GetChildFromIndices(0).ChildCount.ToString());
+                        //LogMessage("Children indice 0,3 : " + inventory.ChildCount.ToString());
+
+                        var auxMap = KiracPanel?.GetChildFromIndices(0, 3);
+                        var auxMap2 = KiracPanel?.GetChildFromIndices(0, 3, 0);
+                        var auxMap3 = KiracPanel?.GetChildFromIndices(0, 3, 0, 0);
+
+                    var auxMapList = KiracPanel?.GetChildFromIndices(0, 3).Children;
+
+                    var zanaMisionAux = auxMap.GetChildrenAs<ExileCore.PoEMemory.Element>().ToList() ?? new List<ExileCore.PoEMemory.Element>();
+                        var firstVisible = zanaMisionAux.First(x => x.IsVisible);
+                        var lastVisible = zanaMisionAux.Last(x => x.IsVisible);
+                        var firstVisibleIndex = firstVisible.IndexInParent;
+                        var lastVisibleIndex = lastVisible.IndexInParent;
+
+                        // get the list of maps in bag, check if they are completaable
+
+                        foreach (var item in auxMapList)
+                        {
+                            
+                            var mapComponent = item.Item.GetComponent<Map>();
+                            var mapGridX = item.PosX;
+
+                            if (mapComponent == null)
+                                continue;
+
+                            var drawRect = item.GetClientRect();
+                            var mapArea = mapComponent.Area;
+                            var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
+
+
+                            var mapRarity = item.Item.GetComponent<Mods>().ItemRarity;
+
+
+                            if (MapAreasInBag.Contains(mapArea.Name))
+                            {
+                                if (Settings.Debug)
+                                {
+                                    LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
+                                }
+                                continue;
+                            }
+
+                            if (!npcInvMapCanGiveCompletion(item))
+                            {
+                                continue;
+                            }
+
+                            if (mapRarity != ItemRarity.Unique)
+                            {
+
+                                if (bonusComp.Contains(mapArea)) continue; // check item quality
+                            }
+                            else
+
+                            {
+                                var mapUniqueName = item.Item.GetComponent<Mods>().UniqueName;
+
+                                if (bonusComp.Any(r => r.Name == mapUniqueName)) continue;
+
+                            }
+
+                            ///-
+
+                            var color = Color.White;
+
+                            if (mapComponent.Tier > 10)
+                            {
+                                color = Color.Red;
+                            }
+                            else if (mapComponent.Tier > 5)
+                            {
+                                color = Color.Yellow;
+                            }
+
+                            var ignoreCompletion = false;
+
+                            if (linesIgnoreMaps.Contains(mapArea.ToString()))
+                            {
+                                ignoreCompletion = true;
+
+                            }
+
+                            var auxindex = (int)item.InventoryPosition.X;
+                            var drawRect2 = KiracPanel.GetChildFromIndices(0, 3).GetChildAtIndex(auxindex).GetClientRect();
+
+                            var stringtoDraw = mapArea.Name;
+                            if (ignoreCompletion)
+
+                                stringtoDraw += " --- IGNORED MAP";
+
+                            Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
+                            drawListPos.Y += 20;
+                            if (mapGridX < firstVisibleIndex || mapGridX > lastVisibleIndex) continue;
+                            //LogMessage("map " + mapArea.ToString() + drawRect2.ToString(), 5, Color.Red);
+                            if (!ignoreCompletion)
+                            {
+                                Graphics.DrawFrame(drawRect2, Settings.UncompletedMaps, 5);
+                                if (Settings.DrawKiracMapsNaturalTier)
+                                    Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect2.X + drawRect2.Width - 4 - naturalTier.ToString().Count() * 6, drawRect2.Y + drawRect2.Height - 14), Color.GreenYellow);
+
+                            }
+                            else
+                            {
+                                if (Settings.HighlightIgnoredMaps)
+                                    Graphics.DrawImage("AtlasMapCross.png", drawRect2, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
+                            }
+
+
+
+
+
+
+                        }
+
+                    }
+                
+                
+                
+            
+
+
+        }
+
+        */
+        private void DrawNpcInvMapsAlt()
+        {
+            var ingameState = GameController.Game.IngameState;
+
+            var serverData = ingameState.ServerData;
+            var npcInv = serverData.NPCInventories;
+
+            var purchaseWindowHideout = GameController.Game.IngameState.IngameUi.PurchaseWindowHideout;
+            var purchaseWindow = GameController.Game.IngameState.IngameUi.PurchaseWindow;
+            ServerInventory purchaseWindowInvent = new ServerInventory();
+            if (purchaseWindow.IsVisible)
+            {
+                
+                purchaseWindowInvent = purchaseWindow.TabContainer.AllInventories.First().ServerInventory;
+                
+            }
+            else if (purchaseWindowHideout.IsVisible)
+            {
+                
+                purchaseWindowInvent = purchaseWindowHideout.TabContainer.AllInventories.First().ServerInventory;
+                
+            }
+
+            var bonusComp = serverData.BonusCompletedAreas;
+            var comp = serverData.CompletedAreas;
+            //var shapered = serverData.ShaperElderAreas;
+
+            var drawListPos = new Vector2(200, 200);
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
+            List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
+            var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
+
+            foreach (var item in purchaseWindowInvent.InventorySlotItems)
+            {
+
+                var mapComponent = item.Item.GetComponent<Map>();
+                var mapGridX = item.PosX;
+
+                if (mapComponent == null)
+                    continue;
+
+                var drawRect = item.GetClientRect();
+                var mapArea = mapComponent.Area;
+                var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
+
+
+                var mapRarity = item.Item.GetComponent<Mods>().ItemRarity;
+
+
+                if (MapAreasInBag.Contains(mapArea.Name))
+                {
+                    if (Settings.Debug)
+                    {
+                        LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
+                    }
+                    continue;
+                }
+
+                if (!npcInvMapCanGiveCompletion(item))
+                {
+                    continue;
+                }
+
+                if (mapRarity != ItemRarity.Unique)
+                {
+
+                    if (bonusComp.Contains(mapArea)) continue; // check item quality
+                }
+                else
+
+                {
+                    var mapUniqueName = item.Item.GetComponent<Mods>().UniqueName;
+
+                    if (bonusComp.Any(r => r.Name == mapUniqueName)) continue;
+
+                }
+
+                ///-
+
+                var color = Color.White;
+
+                if (mapComponent.Tier > 10)
+                {
+                    color = Color.Red;
+                }
+                else if (mapComponent.Tier > 5)
+                {
+                    color = Color.Yellow;
+                }
+
+                var ignoreCompletion = false;
+
+                if (linesIgnoreMaps.Contains(mapArea.ToString()))
+                {
+                    ignoreCompletion = true;
+
+                }
+
+                var auxindex = (int)item.InventoryPosition.X;
+                //var drawRect2 = KiracPanel.GetChildFromIndices(0, 3).GetChildAtIndex(auxindex).GetClientRect();
+
+                var stringtoDraw = mapArea.Name;
+                if (ignoreCompletion)
+
+                    stringtoDraw += " --- IGNORED MAP";
+
+                Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
+                drawListPos.Y += 20;
+                
+                //LogMessage("map " + mapArea.ToString() + drawRect2.ToString(), 5, Color.Red);
+                if (!ignoreCompletion)
+                {
+                    // 962
+                    // 330
+                    Graphics.DrawFrame(new RectangleF(drawRect.X-962, drawRect.Y-330, drawRect.Width, drawRect.Height), Settings.UncompletedMaps, 5);
+                    if (Settings.DrawKiracMapsNaturalTier)
+                        Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect.X + drawRect.Width - 4 - naturalTier.ToString().Count() * 6, drawRect.Y + drawRect.Height - 14), Color.GreenYellow);
+
+                }
+                else
+                {
+                    if (Settings.HighlightIgnoredMaps)
+                        Graphics.DrawImage("AtlasMapCross.png", drawRect, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
+                }
+
+
+
+
+
+
+            }
+
+        }
         
 
         private void HiglightAllMaps(IList<NormalInventoryItem> items)
@@ -866,7 +1268,7 @@ namespace AtlasHelper
                 foreach (var mapToRun in finalMapsToRun)
                 {
                     if(Settings.Debug)
-                        LogMessage("Best maps to run " + mapToRun.Item1.ToStringBestMapsToRun(), 5, Color.Green);
+                        LogMessage("Best maps to run " + mapToRun.Item1.ToStringBestMapsToRun(), 5, Color.Pink);
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
                     if (disableOnHover && disableOnHoverRect.Intersects(mapToRun.Item3))
                         continue;
