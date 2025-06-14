@@ -993,9 +993,66 @@ namespace AtlasHelper
             var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
             List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
 
+            if (ingameState.IngameUi.SellWindowHideout.IsVisible)  // VENDOR
+            {
 
 
-            foreach (var inv in npcInv)
+
+                //foreach (var item in inv.Inventory.InventorySlotItems)
+                foreach (var item in ingameState.IngameUi.SellWindowHideout.OtherOfferItems)
+                {
+                    var mapComponent = item.Item.GetComponent<Map>();
+
+                    if (mapComponent == null)
+                        continue;
+
+                    var drawRect = item.GetClientRect();
+                    drawRect.X = drawRect.X;
+                    drawRect.Y = drawRect.Y;
+                    var mapArea = mapComponent.Area;
+
+                    if (MapAreasInBag.Contains(mapArea.Name))
+                    {
+                        if (Settings.Debug)
+                        {
+                            LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
+                        }
+                        continue;
+                    }
+
+                    if (bonusComp.Contains(mapArea)) continue;
+
+                    var color = Color.White;
+
+                    if (mapComponent.Tier > 10)
+                    {
+                        color = Color.Red;
+                    }
+                    else if (mapComponent.Tier > 5)
+                    {
+                        color = Color.Yellow;
+                    }
+                    //LogMessage("Map: " + mapArea);
+
+                    //LogMessage("Map: " + mapArea + " indice x:" + item.InventoryPosition.X + " indice y:" + item.InventoryPosition.Y);
+                    var ignoreCompletion = false;
+
+                    if (linesIgnoreMaps.Contains(mapArea.ToString()))
+                    {
+                        ignoreCompletion = true;
+
+                    }
+                    var stringtoDraw = mapArea.Name;
+                    if (ignoreCompletion)
+                        stringtoDraw += " --- IGNORED MAP";
+                    Graphics.DrawText(mapArea.Name, drawListPos, color, 20);
+                    Graphics.DrawFrame(drawRect, Color.Red, 5);
+                    if (ignoreCompletion)
+                        Graphics.DrawImage("AtlasMapCross.png", drawRect, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
+                    drawListPos.Y += 20;
+                }
+            }
+                foreach (var inv in npcInv)
             {
 
                 if (inv.Inventory.Rows == 1)
@@ -1126,65 +1183,8 @@ namespace AtlasHelper
 
                     }
                 }
-                else if (ingameState.IngameUi.SellWindowHideout.IsVisible)  // VENDOR
-                {
-                    if (inv.Inventory.Rows == 1) continue;
-                        
-
-                    //foreach (var item in inv.Inventory.InventorySlotItems)
-                    foreach (var item in ingameState.IngameUi.SellWindowHideout.OtherOfferItems)
-                    {
-                        var mapComponent = item.Item.GetComponent<Map>();
-
-                        if (mapComponent == null)
-                            continue;
-
-                        var drawRect = item.GetClientRect();
-                        drawRect.X = drawRect.X;
-                        drawRect.Y = drawRect.Y;
-                        var mapArea = mapComponent.Area;
-
-                        if (MapAreasInBag.Contains(mapArea.Name))
-                        {
-                            if (Settings.Debug)
-                            {
-                                LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
-                            }
-                            continue;
-                        }
-
-                        if (bonusComp.Contains(mapArea)) continue;
-
-                        var color = Color.White;
-
-                        if (mapComponent.Tier > 10)
-                        {
-                            color = Color.Red;
-                        }
-                        else if (mapComponent.Tier > 5)
-                        {
-                            color = Color.Yellow;
-                        }
-                        //LogMessage("Map: " + mapArea);
-
-                        //LogMessage("Map: " + mapArea + " indice x:" + item.InventoryPosition.X + " indice y:" + item.InventoryPosition.Y);
-                        var ignoreCompletion = false;
-
-                        if (linesIgnoreMaps.Contains(mapArea.ToString()))
-                        {
-                            ignoreCompletion = true;
-
-                        }
-                        var stringtoDraw = mapArea.Name;
-                        if (ignoreCompletion)
-                            stringtoDraw += " --- IGNORED MAP";
-                        Graphics.DrawText(mapArea.Name, drawListPos, color, 20);
-                        Graphics.DrawFrame(drawRect, Color.Red, 5);
-                        if (ignoreCompletion)
-                            Graphics.DrawImage("AtlasMapCross.png", drawRect, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
-                        drawListPos.Y += 20;
-                    }
-                }else // kirac shop
+                
+                else // kirac shop
                 {
                     foreach (var item in ingameState.IngameUi.HaggleWindow.InventoryItems)
                     
