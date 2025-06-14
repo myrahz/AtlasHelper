@@ -1129,8 +1129,8 @@ namespace AtlasHelper
                 else if (ingameState.IngameUi.SellWindowHideout.IsVisible)  // VENDOR
                 {
                     if (inv.Inventory.Rows == 1) continue;
-                        LogMessage("eNTROU SELL WINDOW HIDEOUT", 5, Color.Red);
-                    LogMessage(inv.Inventory.InventorySlotItems.Count.ToString(), 5, Color.Red);
+                        
+
                     //foreach (var item in inv.Inventory.InventorySlotItems)
                     foreach (var item in ingameState.IngameUi.SellWindowHideout.OtherOfferItems)
                     {
@@ -1143,8 +1143,7 @@ namespace AtlasHelper
                         drawRect.X = drawRect.X;
                         drawRect.Y = drawRect.Y;
                         var mapArea = mapComponent.Area;
-                        LogMessage(mapComponent.Area.Name + " : " + drawRect.X.ToString() + " : " +drawRect.Y.ToString(), 5, Color.Red);
-                        //var shaper = shapered.Contains(mapArea);
+
                         if (MapAreasInBag.Contains(mapArea.Name))
                         {
                             if (Settings.Debug)
