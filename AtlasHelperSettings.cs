@@ -39,6 +39,7 @@ namespace AtlasHelper
         public ColorNode IgnoredMaps { get; set; } = new ColorNode(Color.Red);
         public ColorNode MapReady { get; set; } = new ColorNode(Color.LightGreen);
         public ColorNode MapNeedsCurrency { get; set; } = new ColorNode(Color.Yellow);
-        public ColorNode DiagonalProgressionHighlight { get; set; } = new ColorNode(Color.DeepPink);
+        public ColorNode DiagonalProgressionHighlightWillGiveCompletion { get; set; } = new ColorNode(Color.DeepPink);
+        public ColorNode DiagonalProgressionHighlightWontGiveCompletion { get; set; } = new ColorNode(Color.Yellow);
     }
 }

@@ -42,6 +42,7 @@ namespace AtlasHelper
         
 
         private List<(AtlasMap,int, RectangleF)> finalMapsToRun = new List<(AtlasMap,int,RectangleF)>();
+        private bool willGiveCompletion = false;
 
         public override bool Initialise()
         {
@@ -193,6 +194,7 @@ namespace AtlasHelper
             var augmentImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "augment.png"), false);
             var alcImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "alc.png"), false);            
             linesIgnoreMaps = File.ReadAllLines(Path.Combine(DirectoryFullName, "images", "ignoreMaps.txt")).ToList();
+            
             GetAtlasNodes();
             if (!initImage)
                 return false;
@@ -218,8 +220,9 @@ namespace AtlasHelper
 
         public override void Render()
         {
-           
 
+            
+            
             // test highest completed tier
             if (Settings.Debug)
             {
@@ -279,14 +282,17 @@ namespace AtlasHelper
 
                     var rarity = modsComponent.ItemRarity;
                     var corrupted = baseComponent.isCorrupted;
-
                     var drawRect = item.GetClientRect();
+                    var uniqueName = modsComponent.UniqueName;
+                    var area = mapComponent.Area;
+                    var tier = mapComponent.Tier;
+                    if ((!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == uniqueName) && rarity == ItemRarity.Unique) || (!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == area.Name) && rarity < ItemRarity.Unique))
+                    {
+                        continue;
+                    }
 
 
 
-
-
-                    
                     drawRect.Top += 20;
                     drawRect.Bottom -= 0;
                     drawRect.Right -= 20;
@@ -296,14 +302,17 @@ namespace AtlasHelper
 
 
 
-                    var area = mapComponent.Area;
-                    var uniqueName = modsComponent.UniqueName;
-                    var tier = mapComponent.Tier;
+         
                     
                     var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
 
                     //if (comp.Contains(area))
                     //    completed++;
+
+                    if( naturalTier == 17)
+                    {
+                        continue;
+                    }
                     if (linesIgnoreMaps.Contains(area.ToString()))
                     {
 
@@ -375,6 +384,7 @@ namespace AtlasHelper
 
                         int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        willGiveCompletion = true;
 
                     }
                     else if (mapsThatGiveCompletion.Count() > 0)  // second best scenario, we have uncompleted maps 
@@ -385,16 +395,19 @@ namespace AtlasHelper
 
                         int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        willGiveCompletion = true;
 
                     } 
                     else if (mapsThatWontGiveCompletion.Count() > 0) // fourth best scenario, we have completed maps run the highest that have the most uncompleted maps adjacent
                     {
+
 
                         int highestTier = mapsThatWontGiveCompletion.Max(map => map.Item2);
                         var highestTierMaps = mapsThatWontGiveCompletion.Where(map => map.Item2 == highestTier).ToList();
 
                         int maxSum = highestTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        willGiveCompletion = false;
                     }
                 }
                 else
@@ -407,7 +420,7 @@ namespace AtlasHelper
 
                         int maxSum = highestBaseTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestBaseTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
-
+                        willGiveCompletion = true;
                     }
                     else if (mapsThatWontGiveCompletion.Count() > 0)
                     {
@@ -417,6 +430,7 @@ namespace AtlasHelper
 
                         int maxSum = highestBaseTierMaps.Max(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps());
                         finalMapsToRun = highestBaseTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
+                        willGiveCompletion = false;
                     }
 
                 }
@@ -587,7 +601,7 @@ namespace AtlasHelper
                 }
                 return false;
             }
-            else if (!corrupted && naturalTier > 10)
+            else if (!corrupted && naturalTier > 10 && rarity < ItemRarity.Unique)
             {
                 if (Settings.Debug)
                 {
@@ -722,7 +736,9 @@ namespace AtlasHelper
 
             if (ingameState.IngameUi.InventoryPanel.IsVisible)
             {
-                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
+                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+                //var inventoryZone = ingameState.IngameUi.InventoryPanel[18]. ;
+                
                 if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null)
                 {
 
@@ -781,7 +797,10 @@ namespace AtlasHelper
 
                         
                         var zanaMisionAux = auxMap.GetChildrenAs<ExileCore.PoEMemory.Element>().ToList() ?? new List<ExileCore.PoEMemory.Element>();
-                        var firstVisible = zanaMisionAux.First(x => x.IsVisible);
+          
+                        var firstVisible = zanaMisionAux.FirstOrDefault(x => x.IsVisible);
+                        if (firstVisible == null)
+                            continue;
                         var lastVisible = zanaMisionAux.Last(x => x.IsVisible);
                         var firstVisibleIndex = firstVisible.IndexInParent;
                         var lastVisibleIndex = lastVisible.IndexInParent;
@@ -1274,7 +1293,16 @@ namespace AtlasHelper
                         continue;
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
                     if (Settings.EnableDiagonalProgressionHighlight)
-                        Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlight);
+                    {
+                        if (willGiveCompletion) { 
+                            Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlightWillGiveCompletion);
+                        }
+                        else
+                        {
+                            Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlightWontGiveCompletion);
+                        }
+                    }
+                        
                     //Graphics.DrawImage("Image
 
                 }

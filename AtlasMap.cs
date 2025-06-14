@@ -57,7 +57,7 @@ namespace AtlasHelper
         
         public int SumOfBaseTiersOfUncompletedAdjacentMaps()
         {
-            return AdjacentMaps.Where(map => !map.Completed).Sum(map => map.BaseTier);
+            return AdjacentMaps?.Where(map => !map.Completed).Sum(map => map.BaseTier) ?? 0;
         }
     }
 }
