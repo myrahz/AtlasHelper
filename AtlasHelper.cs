@@ -248,7 +248,7 @@ namespace AtlasHelper
             if (ingameState.IngameUi.InventoryPanel.IsVisible)
             {
 
-                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
 
                 if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null   )
                 {
@@ -737,7 +737,7 @@ namespace AtlasHelper
 
             if (ingameState.IngameUi.InventoryPanel.IsVisible)
             {
-                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+                var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
                 //var inventoryZone = ingameState.IngameUi.InventoryPanel[18]. ;
                 
                 if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null) // stash is open
@@ -780,7 +780,7 @@ namespace AtlasHelper
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
-            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
             List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
 
 
@@ -990,7 +990,7 @@ namespace AtlasHelper
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
-            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
             List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
 
 
@@ -1373,7 +1373,7 @@ namespace AtlasHelper
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
-            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
             List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
             var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
 
