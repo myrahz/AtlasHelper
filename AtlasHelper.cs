@@ -233,6 +233,7 @@ namespace AtlasHelper
             checkMapIgnore();
             DrawPlayerInvMaps();
             DrawNpcInvMaps();
+            //DrawNpcInvMaps();
             //DrawNpcInvMapsAlt();
             DrawDiagonalProgression();
             
@@ -739,7 +740,15 @@ namespace AtlasHelper
                 var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
                 //var inventoryZone = ingameState.IngameUi.InventoryPanel[18]. ;
                 
-                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null)
+                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null) // stash is open
+                {
+
+                    foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems)
+                    {
+                        inventoryZone.Insert(inventoryZone.Count, normalStashItem);
+                    }
+                }
+                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null) // mini map stash
                 {
 
                     foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems)
@@ -757,7 +766,7 @@ namespace AtlasHelper
             return items.Where(condition).Select(item => item.Item.GetComponent<Map>().Area.Name).ToList();
         }
 
-        private void DrawNpcInvMaps()
+        private void DrawNpcInvMapsOld()
         {
             var ingameState = GameController.Game.IngameState;
 
@@ -907,7 +916,7 @@ namespace AtlasHelper
 
                     }
                 }
-                else
+                else // kirac shop
                 {
                     foreach (var item in inv.Inventory.InventorySlotItems)
                     {
@@ -919,6 +928,216 @@ namespace AtlasHelper
                         var drawRect = item.GetClientRect();
                         drawRect.X = drawRect.X - 961.0f;
                         drawRect.Y = drawRect.Y - 325.0f;
+
+                        var mapArea = mapComponent.Area;
+
+                        //var shaper = shapered.Contains(mapArea);
+                        if (MapAreasInBag.Contains(mapArea.Name))
+                        {
+                            if (Settings.Debug)
+                            {
+                                LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
+                            }
+                            continue;
+                        }
+
+                        if (bonusComp.Contains(mapArea)) continue;
+
+                        var color = Color.White;
+
+                        if (mapComponent.Tier > 10)
+                        {
+                            color = Color.Red;
+                        }
+                        else if (mapComponent.Tier > 5)
+                        {
+                            color = Color.Yellow;
+                        }
+                        //LogMessage("Map: " + mapArea);
+
+                        //LogMessage("Map: " + mapArea + " indice x:" + item.InventoryPosition.X + " indice y:" + item.InventoryPosition.Y);
+                        var ignoreCompletion = false;
+
+                        if (linesIgnoreMaps.Contains(mapArea.ToString()))
+                        {
+                            ignoreCompletion = true;
+
+                        }
+                        var stringtoDraw = mapArea.Name;
+                        if (ignoreCompletion)
+                            stringtoDraw += " --- IGNORED MAP";
+                        Graphics.DrawText(mapArea.Name, drawListPos, color, 20);
+                        Graphics.DrawFrame(drawRect, Color.Red, 5);
+                        if (ignoreCompletion)
+                            Graphics.DrawImage("AtlasMapCross.png", drawRect, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
+                        drawListPos.Y += 20;
+                    }
+                }
+            }
+
+          
+        }   private void DrawNpcInvMaps()
+        {
+            var ingameState = GameController.Game.IngameState;
+
+            var serverData = ingameState.ServerData;
+            var npcInv = serverData.NPCInventories;
+
+            if (npcInv == null || npcInv.Count == 0) return;
+
+            var bonusComp = serverData.BonusCompletedAreas;
+            var comp = serverData.CompletedAreas;
+            //var shapered = serverData.ShaperElderAreas;
+
+            var drawListPos = new Vector2(200, 200);
+            var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory-1].VisibleInventoryItems;
+            List<string> MapAreasInBag = GetFilteredCompletableItems(inventoryZone, mapCanGiveCompletion);
+
+
+
+            foreach (var inv in npcInv)
+            {
+
+                if (inv.Inventory.Rows == 1)
+                {//kirac mission++
+                    if (GameController.Game.IngameState.IngameUi.ZanaMissionChoice.IsVisible)
+                    {
+
+                        var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
+                        
+                        //var inventory = KiracPanel.GetChildFromIndices(0, 3);
+                        var inventory = KiracPanel.GetChildFromIndices(0, 3, 0, 0);
+                        //LogMessage("Children indice 0 : " + KiracPanel.GetChildFromIndices(0).ChildCount.ToString());
+                        //LogMessage("Children indice 0,3 : " + inventory.ChildCount.ToString());
+
+                        var auxMap = KiracPanel?.GetChildFromIndices(0, 3);
+                        var auxMap2 = KiracPanel?.GetChildFromIndices(0, 3, 0);
+                        var auxMap3 = KiracPanel?.GetChildFromIndices(0, 3, 0, 0);
+
+                        
+                        var zanaMisionAux = auxMap.GetChildrenAs<ExileCore.PoEMemory.Element>().ToList() ?? new List<ExileCore.PoEMemory.Element>();
+          
+                        var firstVisible = zanaMisionAux.FirstOrDefault(x => x.IsVisible);
+                        if (firstVisible == null)
+                            continue;
+                        var lastVisible = zanaMisionAux.Last(x => x.IsVisible);
+                        var firstVisibleIndex = firstVisible.IndexInParent;
+                        var lastVisibleIndex = lastVisible.IndexInParent;
+                        
+                        // get the list of maps in bag, check if they are completaable
+                        
+                        foreach (var item in inv.Inventory.InventorySlotItems)
+                        {
+
+                            var mapComponent = item.Item.GetComponent<Map>();
+                            var mapGridX = item.PosX;
+         
+                            if (mapComponent == null)
+                                continue;
+
+                            var drawRect = item.GetClientRect();
+                            var mapArea = mapComponent.Area;
+                            var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
+
+
+                            var mapRarity = item.Item.GetComponent<Mods>().ItemRarity;
+
+
+                            if (MapAreasInBag.Contains(mapArea.Name))
+                            {
+                                if (Settings.Debug)
+                                {
+                                    LogMessage("Map " + mapArea.Name + " doesn't need to highlighted because a completeable copy is in bag", 5, Color.Red);
+                                }
+                                continue;
+                            }
+
+                            if (!npcInvMapCanGiveCompletion(item))
+                            {
+                                continue;
+                            }
+
+                            if (mapRarity != ItemRarity.Unique)
+                            {
+
+                                if (bonusComp.Contains(mapArea)) continue; // check item quality
+                            }
+                            else
+
+                            {
+                                var mapUniqueName = item.Item.GetComponent<Mods>().UniqueName;
+
+                                if (bonusComp.Any(r => r.Name == mapUniqueName)) continue;
+
+                            }
+
+                            ///-
+
+                            var color = Color.White;
+
+                            if (mapComponent.Tier > 10)
+                            {
+                                color = Color.Red;
+                            }
+                            else if (mapComponent.Tier > 5)
+                            {
+                                color = Color.Yellow;
+                            }
+
+                            var ignoreCompletion = false;
+
+                            if (linesIgnoreMaps.Contains(mapArea.ToString()))
+                            {
+                                ignoreCompletion = true;
+
+                            }
+
+                            var auxindex = (int)item.InventoryPosition.X;
+                            var drawRect2 = KiracPanel.GetChildFromIndices(0, 3).GetChildAtIndex(auxindex).GetClientRect();
+
+                            var stringtoDraw = mapArea.Name;
+                            if (ignoreCompletion)
+                                
+                                stringtoDraw += " --- IGNORED MAP";
+
+                            Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
+                            drawListPos.Y += 20;
+                            if (mapGridX < firstVisibleIndex || mapGridX > lastVisibleIndex) continue;
+                            //LogMessage("map " + mapArea.ToString() + drawRect2.ToString(), 5, Color.Red);
+                            if (!ignoreCompletion)
+                            {
+                                Graphics.DrawFrame(drawRect2, Settings.UncompletedMaps, 5);
+                                if(Settings.DrawKiracMapsNaturalTier)
+                                    Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect2.X + drawRect2.Width - 4 - naturalTier.ToString().Count() * 6, drawRect2.Y + drawRect2.Height - 14), Color.GreenYellow);
+
+                            }
+                            else
+                            {
+                                if(Settings.HighlightIgnoredMaps)
+                                    Graphics.DrawImage("AtlasMapCross.png", drawRect2, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
+                            }
+                                
+                            
+                                
+
+                           
+
+                        }
+
+                    }
+                }
+                else // kirac shop
+                {
+                    foreach (var item in ingameState.IngameUi.HaggleWindow.InventoryItems)
+                    {
+                        var mapComponent = item.Item.GetComponent<Map>();
+
+                        if (mapComponent == null)
+                            continue;
+
+                        var drawRect = item.GetClientRect();
+                        drawRect.X = drawRect.X;
+                        drawRect.Y = drawRect.Y;
 
                         var mapArea = mapComponent.Area;
 
