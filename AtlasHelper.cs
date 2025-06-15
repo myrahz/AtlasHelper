@@ -586,6 +586,14 @@ namespace AtlasHelper
                 return false;
 
             }
+            else if (naturalTier > tier)
+            {
+                if (Settings.Debug)
+                {
+                    LogMessage("Map " + area + " | " + rarity + " wont give completion because GGG Nerfed us, and the map tier offered is lower than its natural tier", 5, Settings.IgnoredMaps);
+                }
+                return false;
+            }
             else if (naturalTier > 5 && corrupted && rarity != ItemRarity.Rare)
             {
                 if (Settings.Debug)
