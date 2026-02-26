@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.Intrinsics.X86;
-using System.Threading;
-using System.Windows.Forms;
-using System.Xml.Linq;
-using ExileCore;
+﻿using ExileCore;
 using ExileCore.PoEMemory.Components;
 using ExileCore.PoEMemory.Elements;
 using ExileCore.PoEMemory.Elements.InventoryElements;
@@ -21,14 +13,52 @@ using GameOffsets;
 using GameOffsets.Components;
 using ImGuiNET;
 using SharpDX;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.Intrinsics.X86;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Xml.Linq;
 using Map = ExileCore.PoEMemory.Components.Map;
 
 namespace AtlasHelper
 {
     public class AtlasHelper : BaseSettingsPlugin<AtlasHelperSettings>
     {
-        
 
+        private bool _vendorProcessing;
+        private CancellationTokenSource _vendorCts;
+        private SyncTask<bool> _vendorTask;
+        private Vector2 _windowOffset;
+
+        private List<int> checkpointsKirac = new List<int>
+        {
+            0,3,7,14,22,29,36,43,50,58,65,72,79,90,101,115
+        };
+
+        private Dictionary<int, string> checkPointsKiracTier = new Dictionary<int, string>
+        {
+            {3, "T4"},
+            {7, "T5"},
+            {14, "T6"},
+            {22, "T7"},
+            {29, "T8"},
+            {36, "T9"},
+            {43, "T10"},
+            {50, "T11"},
+            {58, "T12"},
+            {65, "T13"},
+            {72, "T14"},
+            {79, "T15"},
+            {90, "T16"},
+            {101, "T16"},
+            {115, "T16"}
+        };
+        private string completionBonusString = "";
+        private int completionBonusWorking = -2;
         private List<String> linesIgnoreMaps = new List<String>();
         private Color[] SelectColors;
 
@@ -39,9 +69,9 @@ namespace AtlasHelper
         private int highestCompletedTier = 0;
 
         private IList<WorldArea> bonusComp;
-        
 
-        private List<(AtlasMap,int, RectangleF)> finalMapsToRun = new List<(AtlasMap,int,RectangleF)>();
+
+        private List<(AtlasMap, int, RectangleF)> finalMapsToRun = new List<(AtlasMap, int, RectangleF)>();
         private bool willGiveCompletion = false;
 
         public override bool Initialise()
@@ -192,53 +222,413 @@ namespace AtlasHelper
             var vaalCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "vaal.png"), false);
             var transmuteImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "transmute.png"), false);
             var augmentImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "augment.png"), false);
-            var alcImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "alc.png"), false);            
+            var alcImageCross = Graphics.InitImage(Path.Combine(DirectoryFullName, "images", "alc.png"), false);
             linesIgnoreMaps = File.ReadAllLines(Path.Combine(DirectoryFullName, "images", "ignoreMaps.txt")).ToList();
-            
+
+
+            Input.RegisterKey(Keys.LControlKey);
+            var ok = base.Initialise();
+            _windowOffset = GameController.Window.GetWindowRectangleTimeCache.TopLeft;
+            _vendorCts = new CancellationTokenSource();
             GetAtlasNodes();
             if (!initImage)
                 return false;
 
-            Input.RegisterKey(Keys.LControlKey);
+
 
             return true;
         }
-        static bool IsPointInsideRectangle(RectangleF rectangle, double x, double y)
-        {
-            return x >= rectangle.Left && x <= rectangle.Right &&
-                   y >= rectangle.Top && y <= rectangle.Bottom;
-        }
+
 
         public override void AreaChange(AreaInstance area)
         {
             GetAtlasNodes();
+            UpdateCompletion();
             //refreshCompletedAreas();
 
 
+        }
+        private class CachedMapSlot
+        {
+            public string MapKey;                 
+            public int PosX;
+            public int PosY;
+            public Vector2 ClickPoint;           
         }
 
 
         public override void Render()
         {
 
-            
-            
+
+
             // test highest completed tier
             if (Settings.Debug)
             {
                 LogMessage($"Highest completed tier: {highestCompletedTier}", 5, Color.LightBlue);
                 LogMessage($"Number of atlas maps that award completion: {ListAtlasMaps.Count(atlasMap => atlasMap.AdjacentMaps.Count > 0)}", 5, Color.LightBlue);
             }
-                
+            renderKiracCompletionShopRefresh();
             checkMapIgnore();
             DrawPlayerInvMaps();
             DrawNpcInvMaps();
             //DrawNpcInvMaps();
             //DrawNpcInvMapsAlt();
             DrawDiagonalProgression();
-            
+
+            HandleVendor3For1ToggleAndTask();
+
         }
 
+        private void renderKiracCompletionShopRefresh()
+        {
+            var textRect = new Vector2(Settings.KiracShopSpyX, Settings.KiracShopSpyY);
+            Graphics.DrawText(completionBonusString, textRect, Color.White, FontAlign.Center); // - new Vector2(size.Width / 2, size.Height / 2)
+        }
+
+        private void HandleVendor3For1ToggleAndTask()
+        {
+            if (Settings.Vendor3For1Hotkey.PressedOnce())
+            {
+                _vendorProcessing = !_vendorProcessing;
+
+                if (_vendorProcessing)
+                {
+   
+                    _vendorCts = new CancellationTokenSource();
+                    LogMessage("Vendor 3-for-1 started.", 5, Color.LimeGreen);
+                }
+                else
+                {
+                    LogMessage("Vendor 3-for-1 stopped.", 5, Color.Yellow);
+                    Input.KeyUp(Keys.LControlKey);
+                    _vendorCts?.Cancel();
+                    _vendorCts?.Dispose();
+                    _vendorTask = null;
+                }
+            }
+
+            if (_vendorProcessing)
+            {
+                TaskUtils.RunOrRestart(ref _vendorTask, () => RunVendor3For1Async(_vendorCts.Token));
+            }
+        }
+        private bool IsSellWindowVisible()
+        {
+            var ui = GameController.Game.IngameState.IngameUi;
+            return ui.SellWindowHideout.IsVisible || ui.SellWindow.IsVisible;
+        }
+
+        private Entity ReadVendorResultMapEntity()
+        {
+            var ui = GameController.Game.IngameState.IngameUi;
+
+            IEnumerable<NormalInventoryItem> otherOffer = null;
+
+            if (ui.SellWindowHideout.IsVisible)
+                otherOffer = ui.SellWindowHideout.OtherOfferItems;
+            else if (ui.SellWindow.IsVisible)
+                otherOffer = ui.SellWindow.OtherOfferItems;
+
+            if (otherOffer == null) return null;
+
+            foreach (var it in otherOffer)
+            {
+                var ent = it?.Item;
+                if (ent == null) continue;
+                if (ent.GetComponent<Map>() != null)
+                    return ent;
+            }
+
+            return null;
+        }
+
+
+
+
+        private async Task UndoVendorOfferAsync(CancellationToken token)
+        {
+            var ui = GameController.Game.IngameState.IngameUi;
+
+            // TODO: replace with the correct list of "your offer items" for your SellWindow
+            // Examples (depends on your ExileCore version):
+            // var offerItems = ui.SellWindowHideout.YourOfferItems;
+            var offerItems = ui.SellWindow.YourOfferItems;
+
+            //IEnumerable<NormalInventoryItem> offerItems = null; // <-- set this
+
+            if (offerItems == null)
+                return;
+
+            Input.KeyDown(Keys.LControlKey);
+            try
+            {
+                foreach (var it in offerItems)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var rect = it?.GetClientRect();
+                    if (rect == null) continue;
+
+                    Input.SetCursorPos(rect.Value.Center + _windowOffset);
+                    await Task.Delay(30, token);
+                    Input.Click(MouseButtons.Left);
+                    await Task.Delay(50, token);
+                }
+            }
+            finally
+            {
+                Input.KeyUp(Keys.LControlKey);
+            }
+
+            await Task.Delay(80, token);
+        }
+
+        private static IEnumerable<List<T>> Combinations<T>(IList<T> list, int k)
+        {
+            if (k <= 0 || k > list.Count) yield break;
+
+            var idx = new int[k];
+            for (int i = 0; i < k; i++) idx[i] = i;
+
+            while (true)
+            {
+                var combo = new List<T>(k);
+                for (int i = 0; i < k; i++) combo.Add(list[idx[i]]);
+                yield return combo;
+
+                int t = k - 1;
+                while (t >= 0 && idx[t] == list.Count - k + t) t--;
+                if (t < 0) yield break;
+
+                idx[t]++;
+                for (int i = t + 1; i < k; i++)
+                    idx[i] = idx[i - 1] + 1;
+            }
+        }
+        private async Task ClickVendorAcceptAsync(CancellationToken token)
+        {
+            var ui = GameController.Game.IngameState.IngameUi;
+
+            if (ui.SellWindowHideout.IsVisible)
+            {
+                var p = ui.SellWindowHideout.AcceptButton.GetClientRect().Center + _windowOffset;
+                Input.SetCursorPos(p);
+            }
+            else if (ui.SellWindow.IsVisible)
+            {
+                var p = ui.SellWindow.AcceptButton.GetClientRect().Center + _windowOffset;
+                Input.SetCursorPos(p);
+            }
+            else return;
+
+            await Task.Delay(40, token);
+            Input.Click(MouseButtons.Left);
+            await Task.Delay(80, token);
+        }
+        private async SyncTask<bool> RunVendor3For1Async(CancellationToken token)
+        {
+            var completeableNames = new HashSet<string>(
+                ListAtlasMapsCompleteable
+                    .Where(m => m?.WorldArea != null && !string.IsNullOrEmpty(m.WorldArea.Name))
+                    .Select(m => m.WorldArea.Name),
+                StringComparer.OrdinalIgnoreCase
+            );
+
+            try
+            {
+                var ingame = GameController.Game.IngameState;
+
+                if (!IsSellWindowVisible())
+                    return false;
+
+                // Refresh window offset right before caching click points
+                _windowOffset = GameController.Window.GetWindowRectangleTimeCache.TopLeft;
+
+                // UniDy style: iterate SERVER inventory (not VisibleInventoryItems)
+                var slots = ingame.ServerData.PlayerInventories[0].Inventory.InventorySlotItems;
+
+                // Cache map slots + their click positions BEFORE doing any clicking
+                var cached = new List<CachedMapSlot>();
+                var inventoryMapNames = new HashSet<string>(
+                    cached.Select(c => c.MapKey).Where(n => !string.IsNullOrEmpty(n)),
+                    StringComparer.OrdinalIgnoreCase
+                );
+
+           
+
+                foreach (var s in slots)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (s?.Item == null) continue;
+
+                    var map = s.Item.GetComponent<Map>();
+                    if (map == null) continue;
+
+                    var modsComponent = s.Item.GetComponent<Mods>();
+        
+                    var rarity = modsComponent.ItemRarity;
+
+                    if (rarity > ItemRarity.Rare ) continue;
+                    var key = map.Area?.Name ?? s.Item.Path;
+
+
+                    // IMPORTANT: cache click point NOW
+                    var click = s.GetClientRect().Center + _windowOffset;
+
+                    cached.Add(new CachedMapSlot
+                    {
+                        MapKey = key,
+                        PosX = s.PosX,
+                        PosY = s.PosY,
+                        ClickPoint = click
+                    });
+                }
+
+                if (cached.Count < 3)
+                    return false;
+
+                // Group by "same kind of map"
+                var groups = cached
+                    .GroupBy(x => x.MapKey)
+                    .Where(g => g.Count() >= 3)
+                    .OrderByDescending(g => g.Count())
+                    .ToList();
+
+                if (groups.Count == 0)
+                    return false;
+
+                // Build a global plan with stable ordering + indices
+                var plan = new List<(string groupKey, List<CachedMapSlot> combo)>();
+                foreach (var g in groups)
+                {
+                    var list = g.ToList();
+                    foreach (var combo in Combinations(list, 3))
+                        plan.Add((g.Key, combo.ToList()));
+                }
+
+                // Debug: print all combinations at the beginning
+                if (Settings.Debug3To1)
+                {
+                    LogMessage($"[3to1] Inventory maps cached: {cached.Count}", 5, Color.Cyan);
+                    LogMessage($"[3to1] Groups with >=3: {groups.Count}", 5, Color.LightBlue);
+                    LogMessage($"[3to1] Total combos to try: {plan.Count}", 5, Color.LightBlue);
+
+                    for (int i = 0; i < plan.Count; i++)
+                    {
+                        var (groupKey, combo) = plan[i];
+                        LogMessage(
+                            $"[3to1] PLAN #{i} group='{groupKey}' combo=({combo[0].PosX},{combo[0].PosY}) ({combo[1].PosX},{combo[1].PosY}) ({combo[2].PosX},{combo[2].PosY})",
+                            5,
+                            Color.LightGray
+                        );
+                    }
+
+                    if (Settings.Simulate3To1)
+                        return true; // stop after printing
+                }
+
+                // Execute plan in order; log which combo is being tried
+                for (int i = 0; i < plan.Count; i++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (!IsSellWindowVisible()) return false;
+
+                    var (groupKey, combo) = plan[i];
+
+                    if (Settings.Debug3To1)
+                    {
+                        LogMessage(
+                            $"[3to1] TRY  #{i} group='{groupKey}' combo=({combo[0].PosX},{combo[0].PosY}) ({combo[1].PosX},{combo[1].PosY}) ({combo[2].PosX},{combo[2].PosY})",
+                            5,
+                            Color.Yellow
+                        );
+                    }
+
+                    await UndoVendorOfferAsync(token);
+
+                    // Ctrl+click 3 maps into vendor offer using cached points
+                    Input.KeyDown(Keys.LControlKey);
+                    try
+                    {
+                        foreach (var slot in combo)
+                        {
+                            token.ThrowIfCancellationRequested();
+
+                            Input.SetCursorPos(slot.ClickPoint);
+                            await Task.Delay(40, token);
+                            Input.Click(MouseButtons.Left);
+                            await Task.Delay(60, token);
+                        }
+                    }
+                    finally
+                    {
+                        Input.KeyUp(Keys.LControlKey);
+                    }
+
+                    await Task.Delay(120, token);
+
+                    // Read vendor result
+                    var result = ReadVendorResultMapEntity();
+                    if (result == null)
+                    {
+                        if (Settings.Debug3To1)
+                            LogMessage($"[3to1] RESULT #{i}: <null> (no recipe output)", 5, Color.Orange);
+
+                        await UndoVendorOfferAsync(token);
+                        continue;
+                    }
+
+                    var resultName = result.GetComponent<Map>()?.Area?.Name ?? result.Path;
+
+                    if (Settings.Debug3To1)
+                        LogMessage($"[3to1] RESULT #{i}: '{resultName}'", 5, Color.LightGreen);
+
+                    if (vendorMapCanGiveCompletion(resultName, inventoryMapNames))
+                    {
+
+                    
+                        LogMessage($"[3to1] RESULT #{i}: '{resultName}' IS IN COMPLETEABLE!!", 5, Color.LightGreen);
+                        return true;
+                    }
+                    await UndoVendorOfferAsync(token);
+                }
+
+                // Exhausted all combinations
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (Exception e)
+            {
+                LogError($"RunVendor3For1Async error: {e}");
+                return false;
+            }
+            finally
+            {
+                _vendorProcessing = false;
+                Input.KeyUp(Keys.LControlKey);
+                LogMessage("[3to1] Finished.", 5, Color.LightBlue);
+            }
+        }
+        
+
+
+        private void UpdateCompletion()
+        {
+            var completionBonus = GameController.Game.IngameState?.ServerData.BonusCompletedAreas.Count ?? 0;
+
+            int nextCompletionThreshold = 1;
+            string kiracShopMaps = "T1";
+            nextCompletionThreshold = checkpointsKirac.First(x => x > completionBonus);
+            int auxCheckpoint = checkpointsKirac.Last(x => x <= nextCompletionThreshold);
+
+            kiracShopMaps = checkPointsKiracTier[auxCheckpoint];
+            completionBonusString = "Bonus: " + completionBonus.ToString() + "(" + kiracShopMaps + ") -->" + nextCompletionThreshold.ToString();
+
+            completionBonusWorking = completionBonus;
+        }
         private void DrawDiagonalProgression()
         {
 
@@ -250,21 +640,21 @@ namespace AtlasHelper
 
                 var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
 
-                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null   )
+                if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null)
                 {
 
-                    foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems )
+                    foreach (var normalStashItem in ingameState.IngameUi.StashElement.VisibleStash.VisibleInventoryItems)
                     {
                         inventoryZone.Insert(inventoryZone.Count, normalStashItem);
                     }
                 }
 
-                
 
-                var mapsThatGiveCompletion = new List<(AtlasMap,int, RectangleF)>();
-                var mapsThatWontGiveCompletion = new List<(AtlasMap,int, RectangleF)>();
 
-                
+                var mapsThatGiveCompletion = new List<(AtlasMap, int, RectangleF)>();
+                var mapsThatWontGiveCompletion = new List<(AtlasMap, int, RectangleF)>();
+
+
 
                 // if highest tier < 3          
 
@@ -274,7 +664,7 @@ namespace AtlasHelper
 
                     if (entity == null) continue;
                     var bit = GameController.Files.BaseItemTypes.Translate(entity.Path);
-                        
+
                     if (bit == null) continue;
                     if (bit.ClassName != "Map" && bit.ClassName != "Maps") continue;
                     var mapComponent = entity.GetComponent<Map>();
@@ -303,14 +693,14 @@ namespace AtlasHelper
 
 
 
-         
-                    
+
+
                     var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
 
                     //if (comp.Contains(area))
                     //    completed++;
 
-                    if( naturalTier == 17)
+                    if (naturalTier == 17)
                     {
                         continue;
                     }
@@ -323,7 +713,7 @@ namespace AtlasHelper
 
                     if (mapCanGiveCompletion(item))
                     {
-                        if(rarity != ItemRarity.Unique)
+                        if (rarity != ItemRarity.Unique)
                         {
                             mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
                         }
@@ -332,12 +722,12 @@ namespace AtlasHelper
                             mapsThatGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == uniqueName), tier, drawRect));
                         }
 
-                        
-                        
+
+
                     }
                     else
                     {
-                        
+
                         if (rarity != ItemRarity.Unique)
                         {
                             mapsThatWontGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == area.Name), tier, drawRect));
@@ -347,7 +737,7 @@ namespace AtlasHelper
                             mapsThatWontGiveCompletion.Add((ListAtlasMaps.Where(x => x.AdjacentMaps.Count() > 0).FirstOrDefault(x => x.WorldArea.Name == uniqueName), tier, drawRect));
                         }
                     }
-                    
+
 
                 }
 
@@ -366,10 +756,10 @@ namespace AtlasHelper
                     }
                 }
 
-                
+
                 var mapsToRunCompletion = mapsThatGiveCompletion.Where(x => x.Item2 <= highestCompletedTier - 2).OrderByDescending(x => x.Item2);
                 var mapsToRunNoCompletion = mapsThatWontGiveCompletion.Where(x => x.Item2 <= highestCompletedTier - 2).OrderByDescending(x => x.Item2);
-          
+
 
                 if (highestCompletedTier >= 3)
                 {
@@ -398,7 +788,7 @@ namespace AtlasHelper
                         finalMapsToRun = highestTierMaps.Where(map => map.Item1.SumOfBaseTiersOfUncompletedAdjacentMaps() == maxSum).ToList();
                         willGiveCompletion = true;
 
-                    } 
+                    }
                     else if (mapsThatWontGiveCompletion.Count() > 0) // fourth best scenario, we have completed maps run the highest that have the most uncompleted maps adjacent
                     {
 
@@ -437,17 +827,54 @@ namespace AtlasHelper
                 }
 
 
-                
+
 
 
             }
         }
+        private bool vendorMapCanGiveCompletion(string areaName, HashSet<string> inventoryMapNames)
+        {
+            if (string.IsNullOrEmpty(areaName))
+                return false;
 
+            // NEW RULE: if we already have this map in inventory, don't accept it
+            if (inventoryMapNames != null && inventoryMapNames.Contains(areaName))
+            {
+                if (Settings.Debug3To1)
+                    LogMessage($"Map {areaName} wont give completion because you already have it in inventory", 5, Settings.IgnoredMaps);
+
+                return false;
+            }
+
+            // Not even a map you can complete on atlas list
+            if (!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == areaName))
+            {
+                if (Settings.Debug3To1)
+                    LogMessage($"Map {areaName} wont give completion because it isn't present on the atlas list", 5, Settings.IgnoredMaps);
+
+                return false;
+            }
+
+            // Already completed
+            if (bonusComp.Any(a => a.Name == areaName))
+            {
+                if (Settings.Debug3To1)
+                    LogMessage($"Map {areaName} wont give completion because it is already completed", 5, Settings.IgnoredMaps);
+
+                return false;
+            }
+
+            // Otherwise: can give completion
+            if (Settings.Debug3To1)
+                LogMessage($"Map {areaName} will give completion", 5, Settings.UncompletedMaps);
+
+            return true;
+        }
         private bool mapCanGiveCompletion(NormalInventoryItem mapNormalInventoryItem)
         {
             var entity = mapNormalInventoryItem?.Item;
             var bit = GameController.Files.BaseItemTypes.Translate(entity.Path);
-            
+
 
             if (bit == null) return false; ;
             if (bit.ClassName != "Map" && bit.ClassName != "Maps") return false; ;
@@ -669,16 +1096,16 @@ namespace AtlasHelper
                 var baseAtlasNodeAddress = node.Address;
                 //var tier0 = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x51);
                 var tier0 = node.TierProgression[0];
-                
+
 
                 var AtlasNodeKeys = ingameState.M.Read<DatArrayStruct>(baseAtlasNodeAddress + 0x41);
-               
+
                 //var numberOfNeighbours = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x41);
                 var numberOfNeighbours = node.Connections.Count();
                 var isNormalMap = numberOfNeighbours > 1;
 
-                
-                BonusAreasBaseTiers.Add((node.Area, tier0,isNormalMap));
+
+                BonusAreasBaseTiers.Add((node.Area, tier0, isNormalMap));
                 var AtlasNodeKeysStruct = ReadDatPtr2(AtlasNodeKeys, ingameState.M);
 
                 //LogMessage(node.Area.Name + " " + node.Area.Index + " : " + AtlasNodeKeysStruct.Count(), 5, Color.Yellow);
@@ -696,10 +1123,10 @@ namespace AtlasHelper
                 bool isCompleted = bonusComp.Contains(node.Area);
                 //if (numberOfNeighbours > 0)
                 //{
-                    ListAtlasMaps.Add(new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted));
-                    
+                ListAtlasMaps.Add(new AtlasMap(node.Area, tier0, adjacentMaps, isCompleted));
+
                 //}
-                    
+
 
 
 
@@ -710,15 +1137,15 @@ namespace AtlasHelper
 
 
             var filteredBonus = BonusAreasBaseTiers.Where(x => x.Item3 == true && bonusComp.Contains(x.Item1)).ToList(); // item 3 indicates if a map is normal, which means if it isnt a unique or a special map like Shaper or T17
-            
+
             if (Settings.SimulateHighestCompletedTier)
             {
                 highestCompletedTier = Settings.HighestCompletedTierSim;
             }
             else
             {
-                if(filteredBonus.Count() > 0)
-                highestCompletedTier = filteredBonus.Max(x => x.Item2);
+                if (filteredBonus.Count() > 0)
+                    highestCompletedTier = filteredBonus.Max(x => x.Item2);
             }
         }
         private void checkMapIgnore()
@@ -732,9 +1159,10 @@ namespace AtlasHelper
             {
                 Vector2 newInfoPanel2 = new Vector2(822, 722);
                 var drawBox2 = new RectangleF(newInfoPanel2.X, newInfoPanel2.Y, 350, 60);
-                if (Settings.WarnInsideMapToNotComplete) { 
-                Graphics.DrawBox(drawBox2, Color.Red, 5);
-                Graphics.DrawText("DONT FINISH MAP", newInfoPanel2, Color.White, 30);
+                if (Settings.WarnInsideMapToNotComplete)
+                {
+                    Graphics.DrawBox(drawBox2, Color.Red, 5);
+                    Graphics.DrawText("DONT FINISH MAP", newInfoPanel2, Color.White, 30);
                 }
             }
         }
@@ -747,7 +1175,7 @@ namespace AtlasHelper
             {
                 var inventoryZone = ingameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems;
                 //var inventoryZone = ingameState.IngameUi.InventoryPanel[18]. ;
-                
+
                 if (ingameState.IngameUi.StashElement.IsVisible && ingameState.IngameUi.StashElement.VisibleStash != null) // stash is open
                 {
 
@@ -802,7 +1230,7 @@ namespace AtlasHelper
                     {
 
                         var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
-                        
+
                         //var inventory = KiracPanel.GetChildFromIndices(0, 3);
                         var inventory = KiracPanel.GetChildFromIndices(0, 3, 0, 0);
                         //LogMessage("Children indice 0 : " + KiracPanel.GetChildFromIndices(0).ChildCount.ToString());
@@ -812,24 +1240,24 @@ namespace AtlasHelper
                         var auxMap2 = KiracPanel?.GetChildFromIndices(0, 3, 0);
                         var auxMap3 = KiracPanel?.GetChildFromIndices(0, 3, 0, 0);
 
-                        
+
                         var zanaMisionAux = auxMap.GetChildrenAs<ExileCore.PoEMemory.Element>().ToList() ?? new List<ExileCore.PoEMemory.Element>();
-          
+
                         var firstVisible = zanaMisionAux.FirstOrDefault(x => x.IsVisible);
                         if (firstVisible == null)
                             continue;
                         var lastVisible = zanaMisionAux.Last(x => x.IsVisible);
                         var firstVisibleIndex = firstVisible.IndexInParent;
                         var lastVisibleIndex = lastVisible.IndexInParent;
-                        
+
                         // get the list of maps in bag, check if they are completaable
-                        
+
                         foreach (var item in inv.Inventory.InventorySlotItems)
                         {
 
                             var mapComponent = item.Item.GetComponent<Map>();
                             var mapGridX = item.PosX;
-         
+
                             if (mapComponent == null)
                                 continue;
 
@@ -895,7 +1323,7 @@ namespace AtlasHelper
 
                             var stringtoDraw = mapArea.Name;
                             if (ignoreCompletion)
-                                
+
                                 stringtoDraw += " --- IGNORED MAP";
 
                             Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
@@ -905,20 +1333,20 @@ namespace AtlasHelper
                             if (!ignoreCompletion)
                             {
                                 Graphics.DrawFrame(drawRect2, Settings.UncompletedMaps, 5);
-                                if(Settings.DrawKiracMapsNaturalTier)
+                                if (Settings.DrawKiracMapsNaturalTier)
                                     Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect2.X + drawRect2.Width - 4 - naturalTier.ToString().Count() * 6, drawRect2.Y + drawRect2.Height - 14), Color.GreenYellow);
 
                             }
                             else
                             {
-                                if(Settings.HighlightIgnoredMaps)
+                                if (Settings.HighlightIgnoredMaps)
                                     Graphics.DrawImage("AtlasMapCross.png", drawRect2, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
                             }
-                                
-                            
-                                
 
-                           
+
+
+
+
 
                         }
 
@@ -983,8 +1411,9 @@ namespace AtlasHelper
                 }
             }
 
-          
-        }   private void DrawNpcInvMaps()
+
+        }
+        private void DrawNpcInvMaps()
         {
             var ingameState = GameController.Game.IngameState;
 
@@ -1060,7 +1489,7 @@ namespace AtlasHelper
                     drawListPos.Y += 20;
                 }
             }
-                foreach (var inv in npcInv)
+            foreach (var inv in npcInv)
             {
 
                 if (inv.Inventory.Rows == 1)
@@ -1069,7 +1498,7 @@ namespace AtlasHelper
                     {
 
                         var KiracPanel = GameController.Game.IngameState.IngameUi.ZanaMissionChoice;
-                        
+
                         //var inventory = KiracPanel.GetChildFromIndices(0, 3);
                         var inventory = KiracPanel.GetChildFromIndices(0, 3, 0, 0);
                         //LogMessage("Children indice 0 : " + KiracPanel.GetChildFromIndices(0).ChildCount.ToString());
@@ -1079,24 +1508,24 @@ namespace AtlasHelper
                         var auxMap2 = KiracPanel?.GetChildFromIndices(0, 3, 0);
                         var auxMap3 = KiracPanel?.GetChildFromIndices(0, 3, 0, 0);
 
-                        
+
                         var zanaMisionAux = auxMap.GetChildrenAs<ExileCore.PoEMemory.Element>().ToList() ?? new List<ExileCore.PoEMemory.Element>();
-          
+
                         var firstVisible = zanaMisionAux.FirstOrDefault(x => x.IsVisible);
                         if (firstVisible == null)
                             continue;
                         var lastVisible = zanaMisionAux.Last(x => x.IsVisible);
                         var firstVisibleIndex = firstVisible.IndexInParent;
                         var lastVisibleIndex = lastVisible.IndexInParent;
-                        
+
                         // get the list of maps in bag, check if they are completaable
-                        
+
                         foreach (var item in inv.Inventory.InventorySlotItems)
                         {
 
                             var mapComponent = item.Item.GetComponent<Map>();
                             var mapGridX = item.PosX;
-         
+
                             if (mapComponent == null)
                                 continue;
 
@@ -1106,8 +1535,36 @@ namespace AtlasHelper
 
 
                             var mapRarity = item.Item.GetComponent<Mods>().ItemRarity;
+                            var mapmods = item.Item.GetComponent<Mods>().ItemMods;
+                            // CHECK ITS MODS 
 
+                            // mods to watch
+                            var modsToWatch = new List<string>
+                                {
+                                    "MapMissionDisplayHarvestBeasts",
+                                    "MapMissionDisplayHugeHarvest",
+                                    "MapMissionDisplayEssenceExiles"
+                                };
 
+                            var auxindex = (int)item.InventoryPosition.X;
+                            var drawRect2 = KiracPanel.GetChildFromIndices(0, 3).GetChildAtIndex(auxindex).GetClientRect();
+                            var stringtoDraw = mapArea.Name;
+
+                            var matchedMod = mapmods
+                                .FirstOrDefault(m => modsToWatch.Any(k =>
+                                    m.Name.Contains(k, StringComparison.OrdinalIgnoreCase)
+                                ));
+
+                            if (matchedMod != null)
+                            {
+                                if (Settings.Debug)
+                                {
+                                    LogMessage("Map " + mapArea.Name + " Contains a watchable mod" + matchedMod.ToString(), 5, Color.Red);
+                                }
+                                Graphics.DrawText(stringtoDraw + " " + matchedMod.ToString(), drawListPos, Color.Gold, 20);
+                                drawListPos.Y += 20;
+                                Graphics.DrawFrame(drawRect2, Color.Gold, 5);
+                            }
                             if (MapAreasInBag.Contains(mapArea.Name))
                             {
                                 if (Settings.Debug)
@@ -1157,12 +1614,11 @@ namespace AtlasHelper
 
                             }
 
-                            var auxindex = (int)item.InventoryPosition.X;
-                            var drawRect2 = KiracPanel.GetChildFromIndices(0, 3).GetChildAtIndex(auxindex).GetClientRect();
 
-                            var stringtoDraw = mapArea.Name;
+
+
                             if (ignoreCompletion)
-                                
+
                                 stringtoDraw += " --- IGNORED MAP";
 
                             Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
@@ -1172,30 +1628,30 @@ namespace AtlasHelper
                             if (!ignoreCompletion)
                             {
                                 Graphics.DrawFrame(drawRect2, Settings.UncompletedMaps, 5);
-                                if(Settings.DrawKiracMapsNaturalTier)
+                                if (Settings.DrawKiracMapsNaturalTier)
                                     Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect2.X + drawRect2.Width - 4 - naturalTier.ToString().Count() * 6, drawRect2.Y + drawRect2.Height - 14), Color.GreenYellow);
 
                             }
                             else
                             {
-                                if(Settings.HighlightIgnoredMaps)
+                                if (Settings.HighlightIgnoredMaps)
                                     Graphics.DrawImage("AtlasMapCross.png", drawRect2, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
                             }
-                                
-                            
-                                
 
-                           
+
+
+
+
 
                         }
 
                     }
                 }
-                
-                else // kirac shop
+
+                else if (ingameState.IngameUi.HaggleWindow.IsVisible)// kirac shop
                 {
                     foreach (var item in ingameState.IngameUi.HaggleWindow.InventoryItems)
-                    
+
                     {
                         var mapComponent = item.Item.GetComponent<Map>();
 
@@ -1252,7 +1708,7 @@ namespace AtlasHelper
                 }
             }
 
-          
+
         }
         /*
           
@@ -1424,15 +1880,15 @@ namespace AtlasHelper
             ServerInventory purchaseWindowInvent = new ServerInventory();
             if (purchaseWindow.IsVisible)
             {
-                
+
                 purchaseWindowInvent = purchaseWindow.TabContainer.AllInventories.First().ServerInventory;
-                
+
             }
             else if (purchaseWindowHideout.IsVisible)
             {
-                
+
                 purchaseWindowInvent = purchaseWindowHideout.TabContainer.AllInventories.First().ServerInventory;
-                
+
             }
 
             var bonusComp = serverData.BonusCompletedAreas;
@@ -1520,13 +1976,13 @@ namespace AtlasHelper
 
                 Graphics.DrawText(stringtoDraw, drawListPos, color, 20);
                 drawListPos.Y += 20;
-                
+
                 //LogMessage("map " + mapArea.ToString() + drawRect2.ToString(), 5, Color.Red);
                 if (!ignoreCompletion)
                 {
                     // 962
                     // 330
-                    Graphics.DrawFrame(new RectangleF(drawRect.X-962, drawRect.Y-330, drawRect.Width, drawRect.Height), Settings.UncompletedMaps, 5);
+                    Graphics.DrawFrame(new RectangleF(drawRect.X - 962, drawRect.Y - 330, drawRect.Width, drawRect.Height), Settings.UncompletedMaps, 5);
                     if (Settings.DrawKiracMapsNaturalTier)
                         Graphics.DrawText(naturalTier.ToString(), new Vector2(drawRect.X + drawRect.Width - 4 - naturalTier.ToString().Count() * 6, drawRect.Y + drawRect.Height - 14), Color.GreenYellow);
 
@@ -1545,7 +2001,7 @@ namespace AtlasHelper
             }
 
         }
-        
+
 
         private void HiglightAllMaps(IList<NormalInventoryItem> items)
         {
@@ -1572,7 +2028,7 @@ namespace AtlasHelper
             {
                 foreach (var mapToRun in finalMapsToRun)
                 {
-                    if(Settings.Debug)
+                    if (Settings.Debug)
                         LogMessage("Best maps to run " + mapToRun.Item1.ToStringBestMapsToRun(), 5, Color.Pink);
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
                     if (disableOnHover && disableOnHoverRect.Intersects(mapToRun.Item3))
@@ -1580,7 +2036,8 @@ namespace AtlasHelper
                     //Graphics.DrawImage("ImagesAtlas.png", mapToRun.Item2, new RectangleF(.184f, .731f, .184f, .269f), Color.Pink);
                     if (Settings.EnableDiagonalProgressionHighlight)
                     {
-                        if (willGiveCompletion) { 
+                        if (willGiveCompletion)
+                        {
                             Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlightWillGiveCompletion);
                         }
                         else
@@ -1588,16 +2045,16 @@ namespace AtlasHelper
                             Graphics.DrawBox(mapToRun.Item3, Settings.DiagonalProgressionHighlightWontGiveCompletion);
                         }
                     }
-                        
+
                     //Graphics.DrawImage("Image
 
                 }
             }
-           
+
 
             foreach (var item in items)
             {
-                
+
                 var entity = item?.Item;
 
                 if (entity == null) continue;
@@ -1617,14 +2074,14 @@ namespace AtlasHelper
 
                 if (disableOnHover && disableOnHoverRect.Intersects(drawRect))
                     continue;
-                
+
                 var offset = 3;
                 drawRect.Top += offset;
                 drawRect.Bottom -= offset;
                 drawRect.Right -= offset;
                 drawRect.Left += offset;
 
-                
+
                 drawRect2.Top += 20;
                 drawRect2.Bottom -= 0;
                 drawRect2.Right -= 0;
@@ -1645,7 +2102,7 @@ namespace AtlasHelper
 
                 if (linesIgnoreMaps.Contains(area.ToString()) && Settings.HighlightIgnoredMaps)
                 {
-                    
+
                     Graphics.DrawImage("AtlasMapCross.png", drawRect, new RectangleF(1, 1, 1, 1), Settings.IgnoredMaps);
 
                 }
@@ -1707,12 +2164,12 @@ namespace AtlasHelper
                 if (Settings.ShowMapTierTopLeft)
                     Graphics.DrawText(tier.ToString(), new Vector2(drawRect.X, drawRect.Y - 1), Color.White);
 
-                
+
 
             }
-            
-        }
 
+        }
+        
 
 
         public class MapItem

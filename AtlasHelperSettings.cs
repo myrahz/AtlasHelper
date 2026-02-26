@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
-using ExileCore.Shared.Attributes;
+﻿using ExileCore.Shared.Attributes;
 using ExileCore.Shared.Interfaces;
 using ExileCore.Shared.Nodes;
 using SharpDX;
+using System.Collections.Generic;
+using System.Windows.Forms;
 
 namespace AtlasHelper
 {
@@ -22,6 +23,10 @@ namespace AtlasHelper
         public ToggleNode Enable { get; set; } = new ToggleNode();
         public ToggleNode EnableDiagonalProgressionHighlight { get; set; } = new ToggleNode();
         public ToggleNode Debug { get; set; } = new ToggleNode(true);
+        public ToggleNode Debug3To1 { get; set; } = new ToggleNode(true);
+        public ToggleNode Simulate3To1 { get; set; } = new ToggleNode(true);
+
+        public HotkeyNode Vendor3For1Hotkey { get; set; } = new HotkeyNode(Keys.F8);
         public ToggleNode SimulateHighestCompletedTier { get; set; } = new ToggleNode();
         
         public RangeNode<int> HighestCompletedTierSim { get; set; } = new RangeNode<int>(1, 2, 16);
@@ -41,5 +46,9 @@ namespace AtlasHelper
         public ColorNode MapNeedsCurrency { get; set; } = new ColorNode(Color.Yellow);
         public ColorNode DiagonalProgressionHighlightWillGiveCompletion { get; set; } = new ColorNode(Color.DeepPink);
         public ColorNode DiagonalProgressionHighlightWontGiveCompletion { get; set; } = new ColorNode(Color.Yellow);
+
+        public RangeNode<int> KiracShopSpyX { get; set; } = new(1063, 0, 4000);
+
+        public RangeNode<int> KiracShopSpyY { get; set; } = new(1286, 0, 4000);
     }
 }
