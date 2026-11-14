@@ -22,7 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Linq;
-using Map = ExileCore.PoEMemory.Components.Map;
+using MapKey = ExileCore.PoEMemory.Components.MapKey;
 
 namespace AtlasHelper
 {
@@ -336,7 +336,7 @@ namespace AtlasHelper
             {
                 var ent = it?.Item;
                 if (ent == null) continue;
-                if (ent.GetComponent<Map>() != null)
+                if (ent.GetComponent<MapKey>() != null)
                     return ent;
             }
 
@@ -461,7 +461,7 @@ namespace AtlasHelper
                     token.ThrowIfCancellationRequested();
                     if (s?.Item == null) continue;
 
-                    var map = s.Item.GetComponent<Map>();
+                    var map = s.Item.GetComponent<MapKey>();
                     if (map == null) continue;
 
                     var modsComponent = s.Item.GetComponent<Mods>();
@@ -469,7 +469,7 @@ namespace AtlasHelper
                     var rarity = modsComponent.ItemRarity;
 
                     if (rarity > ItemRarity.Rare ) continue;
-                    var key = map.Area?.Name ?? s.Item.Path;
+                    var key = map.GetArea()?.Name ?? s.Item.Path;
 
 
                     // IMPORTANT: cache click point NOW
@@ -578,7 +578,7 @@ namespace AtlasHelper
                         continue;
                     }
 
-                    var resultName = result.GetComponent<Map>()?.Area?.Name ?? result.Path;
+                    var resultName = result.GetComponent<MapKey>()?.GetArea()?.Name ?? result.Path;
 
                     if (Settings.Debug3To1)
                         LogMessage($"[3to1] RESULT #{i}: '{resultName}'", 5, Color.LightGreen);
@@ -617,7 +617,7 @@ namespace AtlasHelper
 
         private void UpdateCompletion()
         {
-            var completionBonus = GameController.Game.IngameState?.ServerData.BonusCompletedAreas.Count ?? 0;
+            var completionBonus = GameController.Game.IngameState?.ServerData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList().Count ?? 0;
 
             int nextCompletionThreshold = 1;
             string kiracShopMaps = "T1";
@@ -667,7 +667,7 @@ namespace AtlasHelper
 
                     if (bit == null) continue;
                     if (bit.ClassName != "Map" && bit.ClassName != "Maps") continue;
-                    var mapComponent = entity.GetComponent<Map>();
+                    var mapComponent = entity.GetComponent<MapKey>();
                     var modsComponent = entity.GetComponent<Mods>();
                     var baseComponent = entity.GetComponent<Base>();
 
@@ -675,7 +675,7 @@ namespace AtlasHelper
                     var corrupted = baseComponent.isCorrupted;
                     var drawRect = item.GetClientRect();
                     var uniqueName = modsComponent.UniqueName;
-                    var area = mapComponent.Area;
+                    var area = mapComponent.GetArea();
                     var tier = mapComponent.Tier;
                     if ((!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == uniqueName) && rarity == ItemRarity.Unique) || (!ListAtlasMapsCompleteable.Any(atlasMap => atlasMap.WorldArea.Name == area.Name) && rarity < ItemRarity.Unique))
                     {
@@ -878,13 +878,13 @@ namespace AtlasHelper
 
             if (bit == null) return false; ;
             if (bit.ClassName != "Map" && bit.ClassName != "Maps") return false; ;
-            var mapComponent = entity.GetComponent<Map>();
+            var mapComponent = entity.GetComponent<MapKey>();
             var modsComponent = entity.GetComponent<Mods>();
             var baseComponent = entity.GetComponent<Base>();
             var rarity = modsComponent.ItemRarity;
             var corrupted = baseComponent.isCorrupted;
             var uniqueName = modsComponent.UniqueName;
-            var area = mapComponent.Area;
+            var area = mapComponent.GetArea();
             var tier = mapComponent.Tier;
             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
             var neighbours = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).AdjacentMaps.Count();
@@ -972,12 +972,12 @@ namespace AtlasHelper
 
             if (bit == null) return false; ;
             if (bit.ClassName != "Map" && bit.ClassName != "Maps") return false; ;
-            var mapComponent = entity.GetComponent<Map>();
+            var mapComponent = entity.GetComponent<MapKey>();
             var modsComponent = entity.GetComponent<Mods>();
             var baseComponent = entity.GetComponent<Base>();
             var rarity = modsComponent.ItemRarity;
             var corrupted = baseComponent.isCorrupted;
-            var area = mapComponent.Area;
+            var area = mapComponent.GetArea();
             var uniqueName = modsComponent.UniqueName;
             var tier = mapComponent.Tier;
             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == area.Name).BaseTier;
@@ -1083,10 +1083,10 @@ namespace AtlasHelper
             var ingameState = GameController.Game.IngameState;
             var atlasNodes = ingameState.TheGame.Files.AtlasNodes.EntriesList;
             var serverData = ingameState.ServerData;
-            bonusComp = serverData.BonusCompletedAreas;
+            bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
             ListAtlasMaps.Clear();
             BonusAreasBaseTiers.Clear();
-            //bonusCompWithoutUniques = serverData.BonusCompletedAreas.Where(x => !x.Id.Contains("Unique"));
+            //bonusCompWithoutUniques = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList().Where(x => !x.Id.Contains("Unique"));
 
 
 
@@ -1095,7 +1095,7 @@ namespace AtlasHelper
 
                 var baseAtlasNodeAddress = node.Address;
                 //var tier0 = ingameState.M.Read<int>(baseAtlasNodeAddress + 0x51);
-                var tier0 = node.TierProgression[0];
+                var tier0 = node.BaseTier;
 
 
                 var AtlasNodeKeys = ingameState.M.Read<DatArrayStruct>(baseAtlasNodeAddress + 0x41);
@@ -1152,7 +1152,7 @@ namespace AtlasHelper
         {
             var ingameState = GameController.Game.IngameState;
             var serverData = ingameState.ServerData;
-            var bonusComp = serverData.BonusCompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
 
             //if (linesIgnoreMaps.Contains(GameController.IngameState.Data.CurrentArea.Name))
             if (linesIgnoreMaps.Contains(GameController.IngameState.Data.CurrentArea.Name) && !bonusComp.Any(x => x.Name == GameController.IngameState.Data.CurrentArea.Name))
@@ -1199,7 +1199,7 @@ namespace AtlasHelper
         private List<string> GetFilteredCompletableItems(IList<NormalInventoryItem> items, Func<NormalInventoryItem, bool> condition)
         {
 
-            return items.Where(condition).Select(item => item.Item.GetComponent<Map>().Area.Name).ToList();
+            return items.Where(condition).Select(item => item.Item.GetComponent<MapKey>().GetArea().Name).ToList();
         }
 
         private void DrawNpcInvMapsOld()
@@ -1211,8 +1211,8 @@ namespace AtlasHelper
 
             if (npcInv == null || npcInv.Count == 0) return;
 
-            var bonusComp = serverData.BonusCompletedAreas;
-            var comp = serverData.CompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
+            var comp = serverData.CompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
@@ -1255,14 +1255,14 @@ namespace AtlasHelper
                         foreach (var item in inv.Inventory.InventorySlotItems)
                         {
 
-                            var mapComponent = item.Item.GetComponent<Map>();
+                            var mapComponent = item.Item.GetComponent<MapKey>();
                             var mapGridX = item.PosX;
 
                             if (mapComponent == null)
                                 continue;
 
                             var drawRect = item.GetClientRect();
-                            var mapArea = mapComponent.Area;
+                            var mapArea = mapComponent.GetArea();
                             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
 
 
@@ -1356,7 +1356,7 @@ namespace AtlasHelper
                 {
                     foreach (var item in inv.Inventory.InventorySlotItems)
                     {
-                        var mapComponent = item.Item.GetComponent<Map>();
+                        var mapComponent = item.Item.GetComponent<MapKey>();
 
                         if (mapComponent == null)
                             continue;
@@ -1365,7 +1365,7 @@ namespace AtlasHelper
                         drawRect.X = drawRect.X - 961.0f;
                         drawRect.Y = drawRect.Y - 325.0f;
 
-                        var mapArea = mapComponent.Area;
+                        var mapArea = mapComponent.GetArea();
 
                         //var shaper = shapered.Contains(mapArea);
                         if (MapAreasInBag.Contains(mapArea.Name))
@@ -1422,8 +1422,8 @@ namespace AtlasHelper
 
             if (npcInv == null || npcInv.Count == 0) return;
 
-            var bonusComp = serverData.BonusCompletedAreas;
-            var comp = serverData.CompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
+            var comp = serverData.CompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
@@ -1438,7 +1438,7 @@ namespace AtlasHelper
                 //foreach (var item in inv.Inventory.InventorySlotItems)
                 foreach (var item in ingameState.IngameUi.SellWindowHideout.OtherOfferItems)
                 {
-                    var mapComponent = item.Item.GetComponent<Map>();
+                    var mapComponent = item.Item.GetComponent<MapKey>();
 
                     if (mapComponent == null)
                         continue;
@@ -1446,7 +1446,7 @@ namespace AtlasHelper
                     var drawRect = item.GetClientRect();
                     drawRect.X = drawRect.X;
                     drawRect.Y = drawRect.Y;
-                    var mapArea = mapComponent.Area;
+                    var mapArea = mapComponent.GetArea();
 
                     if (MapAreasInBag.Contains(mapArea.Name))
                     {
@@ -1523,14 +1523,14 @@ namespace AtlasHelper
                         foreach (var item in inv.Inventory.InventorySlotItems)
                         {
 
-                            var mapComponent = item.Item.GetComponent<Map>();
+                            var mapComponent = item.Item.GetComponent<MapKey>();
                             var mapGridX = item.PosX;
 
                             if (mapComponent == null)
                                 continue;
 
                             var drawRect = item.GetClientRect();
-                            var mapArea = mapComponent.Area;
+                            var mapArea = mapComponent.GetArea();
                             var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
 
 
@@ -1653,7 +1653,7 @@ namespace AtlasHelper
                     foreach (var item in ingameState.IngameUi.HaggleWindow.InventoryItems)
 
                     {
-                        var mapComponent = item.Item.GetComponent<Map>();
+                        var mapComponent = item.Item.GetComponent<MapKey>();
 
                         if (mapComponent == null)
                             continue;
@@ -1662,7 +1662,7 @@ namespace AtlasHelper
                         drawRect.X = drawRect.X;
                         drawRect.Y = drawRect.Y;
 
-                        var mapArea = mapComponent.Area;
+                        var mapArea = mapComponent.GetArea();
 
                         //var shaper = shapered.Contains(mapArea);
                         if (MapAreasInBag.Contains(mapArea.Name))
@@ -1722,8 +1722,8 @@ namespace AtlasHelper
 
             if (npcInv == null || npcInv.Count == 0) return;
 
-            var bonusComp = serverData.BonusCompletedAreas;
-            var comp = serverData.CompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
+            var comp = serverData.CompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
@@ -1763,7 +1763,7 @@ namespace AtlasHelper
                         foreach (var item in auxMapList)
                         {
                             
-                            var mapComponent = item.Item.GetComponent<Map>();
+                            var mapComponent = item.Item.GetComponent<MapKey>();
                             var mapGridX = item.PosX;
 
                             if (mapComponent == null)
@@ -1891,8 +1891,8 @@ namespace AtlasHelper
 
             }
 
-            var bonusComp = serverData.BonusCompletedAreas;
-            var comp = serverData.CompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
+            var comp = serverData.CompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
             //var shapered = serverData.ShaperElderAreas;
 
             var drawListPos = new Vector2(200, 200);
@@ -1903,14 +1903,14 @@ namespace AtlasHelper
             foreach (var item in purchaseWindowInvent.InventorySlotItems)
             {
 
-                var mapComponent = item.Item.GetComponent<Map>();
+                var mapComponent = item.Item.GetComponent<MapKey>();
                 var mapGridX = item.PosX;
 
                 if (mapComponent == null)
                     continue;
 
                 var drawRect = item.GetClientRect();
-                var mapArea = mapComponent.Area;
+                var mapArea = mapComponent.GetArea();
                 var naturalTier = ListAtlasMaps.FirstOrDefault(x => x.WorldArea.Name == mapArea.Name).BaseTier;
 
 
@@ -2008,8 +2008,8 @@ namespace AtlasHelper
 
             var ingameState = GameController.Game.IngameState;
             var serverData = ingameState.ServerData;
-            var bonusComp = serverData.BonusCompletedAreas;
-            var comp = serverData.CompletedAreas;
+            var bonusComp = serverData.BonusCompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
+            var comp = serverData.CompletedNodes.Select(n => n.Area).Where(a => a != null).ToList();
 
 
             var disableOnHover = false;
@@ -2062,7 +2062,7 @@ namespace AtlasHelper
 
                 if (bit == null) continue;
                 if (bit.ClassName != "Map" && bit.ClassName != "Maps") continue;
-                var mapComponent = entity.GetComponent<Map>();
+                var mapComponent = entity.GetComponent<MapKey>();
                 var modsComponent = entity.GetComponent<Mods>();
                 var baseComponent = entity.GetComponent<Base>();
 
@@ -2089,7 +2089,7 @@ namespace AtlasHelper
 
                 var completed = 0;
 
-                var area = mapComponent.Area;
+                var area = mapComponent.GetArea();
                 var tier = mapComponent.Tier;
                 var mapMods = modsComponent.ExplicitMods.Count();
 
@@ -2187,5 +2187,23 @@ namespace AtlasHelper
                 Tier = tier;
             }
         }
+    }
+}
+
+
+// Added for current ExileCore: the MapKey component (formerly Map) no longer exposes its WorldArea,
+// so resolve it from the item's base name (or unique name).
+internal static class MapKeyAreaExtensions
+{
+    public static ExileCore.PoEMemory.MemoryObjects.WorldArea GetArea(this ExileCore.PoEMemory.Components.MapKey mapKey)
+    {
+        var owner = mapKey?.Owner;
+        if (owner == null) return null;
+        var mods = owner.GetComponent<ExileCore.PoEMemory.Components.Mods>();
+        var name = !string.IsNullOrEmpty(mods?.UniqueName)
+            ? mods.UniqueName
+            : owner.GetComponent<ExileCore.PoEMemory.Components.Base>()?.Name?.Replace(" Map", "");
+        if (string.IsNullOrEmpty(name)) return null;
+        return mapKey.TheGame.Files.WorldAreas.EntriesList.FirstOrDefault(a => a.Name == name);
     }
 }
